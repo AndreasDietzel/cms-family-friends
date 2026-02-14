@@ -4,10 +4,13 @@ import SwiftData
 /// Gruppenliste und -verwaltung
 struct GroupListView: View {
     @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
+    @Query(filter: #Predicate<TrackedContact> { $0.group == nil }) private var unassignedContacts: [TrackedContact]
     @Environment(\.modelContext) private var modelContext
     @State private var showingAddGroup = false
     @State private var groupToDelete: ContactGroup?
     @State private var showDeleteConfirmation = false
+    @State private var showBatchAssign = false
+    @State private var batchTargetGroup: ContactGroup?
     
     var body: some View {
         NavigationStack {
@@ -24,14 +27,35 @@ struct GroupListView: View {
                         .buttonStyle(.borderedProminent)
                     }
                 } else {
-                    ForEach(groups, id: \.id) { group in
-                        GroupDetailRow(group: group)
-                            .contextMenu {
-                                Button("Löschen", role: .destructive) {
-                                    groupToDelete = group
-                                    showDeleteConfirmation = true
+                    // Nicht zugeordnete Kontakte
+                    if !unassignedContacts.isEmpty {
+                        Section {
+                            HStack {
+                                Image(systemName: "person.fill.questionmark")
+                                    .foregroundStyle(.orange)
+                                Text("\(unassignedContacts.count) Kontakt(e) ohne Gruppe")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Button("Zuordnen…") {
+                                    showBatchAssign = true
                                 }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
                             }
+                        }
+                    }
+                    
+                    // Gruppen
+                    Section {
+                        ForEach(groups, id: \.id) { group in
+                            GroupDetailRow(group: group)
+                                .contextMenu {
+                                    Button("Löschen", role: .destructive) {
+                                        groupToDelete = group
+                                        showDeleteConfirmation = true
+                                    }
+                                }
+                        }
                     }
                 }
             }
@@ -54,6 +78,9 @@ struct GroupListView: View {
         }
         .sheet(isPresented: $showingAddGroup) {
             AddGroupView()
+        }
+        .sheet(isPresented: $showBatchAssign) {
+            BatchAssignView(contacts: unassignedContacts, groups: groups)
         }
         .confirmationDialog(
             "Gruppe löschen?",
@@ -245,6 +272,7 @@ struct AddGroupView: View {
     @State private var colorHex = "#007AFF"
     @State private var priority = 50
     @State private var validationError: String?
+    @FocusState private var nameFieldFocused: Bool
     
     let availableIcons = [
         "house.fill", "heart.fill", "person.2.fill",
@@ -262,10 +290,22 @@ struct AddGroupView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-            Form {
-                TextField("Gruppenname", text: $name)
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Gruppenname")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("z.B. Familie, Sportverein...", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($nameFieldFocused)
+                }
                 
-                Stepper("Kontakt-Intervall: \(interval) Tage", value: $interval, in: 1...365)
+                VStack(alignment: .leading, spacing: 4) {
+                    Stepper("Kontakt-Intervall: \(interval) Tage", value: $interval, in: 1...365)
+                    Text("Wie oft sollten Kontakte in dieser Gruppe kontaktiert werden?")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 
                 Stepper("Priorität: \(priority)", value: $priority, in: 0...100)
                 
@@ -274,8 +314,9 @@ struct AddGroupView: View {
                         Label(iconName, systemImage: iconName).tag(iconName)
                     }
                 }
+                .pickerStyle(.menu)
             }
-            .formStyle(.grouped)
+            .padding()
             
             HStack {
                 Button("Abbrechen") { dismiss() }
@@ -302,6 +343,7 @@ struct AddGroupView: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
                 .disabled(!isValid)
             }
             
@@ -313,5 +355,152 @@ struct AddGroupView: View {
         }
         .padding()
         .frame(width: 450, height: 400)
+        .onAppear {
+            // Focus auf Namensfeld setzen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                nameFieldFocused = true
+            }
+        }
+    }
+}
+
+// MARK: - Batch-Zuweisung nicht zugeordneter Kontakte
+struct BatchAssignView: View {
+    let contacts: [TrackedContact]
+    let groups: [ContactGroup]
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var selectedContacts: Set<UUID> = []
+    @State private var targetGroup: ContactGroup?
+    @State private var assignedCount = 0
+    @State private var isDone = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Kontakte zuordnen")
+                    .font(.title2).fontWeight(.bold)
+                Spacer()
+                if !selectedContacts.isEmpty {
+                    Text("\(selectedContacts.count) ausgewählt")
+                        .foregroundStyle(.secondary)
+                }
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.title2)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+            
+            Divider()
+            
+            if isDone {
+                // Ergebnis
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 50))
+                        .foregroundStyle(.green)
+                    Text("\(assignedCount) Kontakt(e) zugeordnet")
+                        .font(.title3).fontWeight(.bold)
+                    if let group = targetGroup {
+                        Text("Gruppe: \(group.name)")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Schließen") { dismiss() }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.bottom)
+                }
+            } else {
+                // Kontaktliste mit Checkboxen
+                HStack {
+                    Button(allSelected ? "Keine auswählen" : "Alle auswählen") {
+                        if allSelected {
+                            selectedContacts.removeAll()
+                        } else {
+                            selectedContacts = Set(contacts.map(\.id))
+                        }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                
+                List(contacts.sorted { $0.lastName < $1.lastName }, id: \.id) { contact in
+                    HStack(spacing: 12) {
+                        Image(systemName: selectedContacts.contains(contact.id) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(selectedContacts.contains(contact.id) ? .blue : .secondary)
+                            .font(.title3)
+                        
+                        Text(contact.fullName)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
+                        if let days = contact.daysSinceLastContact {
+                            Text("vor \(days)d")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if selectedContacts.contains(contact.id) {
+                            selectedContacts.remove(contact.id)
+                        } else {
+                            selectedContacts.insert(contact.id)
+                        }
+                    }
+                }
+                .listStyle(.inset(alternatesRowBackgrounds: true))
+                
+                Divider()
+                
+                // Gruppen-Auswahl + Zuordnen
+                HStack(spacing: 12) {
+                    Text("Zuordnen an:")
+                        .font(.callout)
+                    
+                    Picker("Gruppe", selection: $targetGroup) {
+                        Text("Gruppe wählen…").tag(nil as ContactGroup?)
+                        ForEach(groups, id: \.id) { group in
+                            Label("\(group.name) (\(group.contactIntervalDays)d)", systemImage: group.icon)
+                                .tag(group as ContactGroup?)
+                        }
+                    }
+                    .frame(width: 220)
+                    
+                    Spacer()
+                    
+                    Button("Zuordnen") {
+                        performAssign()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedContacts.isEmpty || targetGroup == nil)
+                }
+                .padding()
+            }
+        }
+        .frame(width: 500, height: 500)
+    }
+    
+    private var allSelected: Bool {
+        !contacts.isEmpty && contacts.allSatisfy { selectedContacts.contains($0.id) }
+    }
+    
+    private func performAssign() {
+        guard let group = targetGroup else { return }
+        assignedCount = 0
+        for contact in contacts where selectedContacts.contains(contact.id) {
+            contact.group = group
+            assignedCount += 1
+        }
+        isDone = true
     }
 }
