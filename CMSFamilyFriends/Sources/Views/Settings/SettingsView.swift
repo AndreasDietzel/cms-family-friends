@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 /// Einstellungsansicht
 struct SettingsView: View {
@@ -8,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("birthdayReminderDays") private var birthdayReminderDays = 3
     @AppStorage("enableMenuBar") private var enableMenuBar = true
     @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @AppStorage("keepInDock") private var keepInDock = true
     
     @EnvironmentObject var reminderManager: ReminderManager
     @EnvironmentObject var contactManager: ContactManager
@@ -25,7 +27,15 @@ struct SettingsView: View {
                 // Allgemein
                 settingsSection("Allgemein", icon: "gear") {
                     Toggle("Beim Anmelden starten", isOn: $launchAtLogin)
+                        .onChange(of: launchAtLogin) { _, newValue in
+                            setLaunchAtLogin(newValue)
+                        }
                     Toggle("Menüleisten-Symbol", isOn: $enableMenuBar)
+                    
+                    Toggle("Im Dock behalten (Hintergrund)", isOn: $keepInDock)
+                    Text("Wenn aktiviert, läuft die App im Hintergrund weiter, auch wenn das Fenster geschlossen wird. Das Symbol bleibt im Dock sichtbar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     
                     HStack {
                         Text("Sync-Intervall")
@@ -212,6 +222,27 @@ struct SettingsView: View {
         showExportSuccess = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             showExportSuccess = false
+        }
+    }
+    
+    // MARK: - Launch at Login
+    
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        if enabled {
+            // SMAppService für macOS 13+
+            if #available(macOS 13.0, *) {
+                do {
+                    try SMAppService.mainApp.register()
+                } catch {
+                    launchAtLogin = false
+                }
+            }
+        } else {
+            if #available(macOS 13.0, *) {
+                do {
+                    try SMAppService.mainApp.unregister()
+                } catch { }
+            }
         }
     }
 }

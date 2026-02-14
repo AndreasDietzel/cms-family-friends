@@ -6,7 +6,11 @@ struct CMSFamilyFriendsApp: App {
     @StateObject private var contactManager = ContactManager()
     @StateObject private var reminderManager = ReminderManager()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("keepInDock") private var keepInDock = true
     @State private var showOnboarding = false
+    
+    /// AppDelegate für Dock-Verhalten (Fenster schließen ohne App zu beenden)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var body: some Scene {
         WindowGroup {
@@ -20,6 +24,10 @@ struct CMSFamilyFriendsApp: App {
                     if !hasCompletedOnboarding {
                         showOnboarding = true
                     }
+                    appDelegate.keepInDock = keepInDock
+                }
+                .onChange(of: keepInDock) { _, newValue in
+                    appDelegate.keepInDock = newValue
                 }
         }
         .modelContainer(for: [
