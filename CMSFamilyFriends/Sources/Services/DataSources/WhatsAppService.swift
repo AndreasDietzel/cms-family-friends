@@ -60,6 +60,8 @@ actor WhatsAppService {
         let cutoffTimestamp = Int64(Date().timeIntervalSince1970) - Int64(daysPast * 86400)
         
         // Privacy by Design: Kein ZTEXT abfragen – nur Metadaten
+        // ZMESSAGETYPE: 0 = Text, 2 = Bild, 3 = Video, 5 = Standort, 8 = Anruf, etc.
+        // Nur Text (0) und Anrufe (8) auswerten – keine Medien/Bilder
         let query = """
             SELECT ZWAMESSAGE.Z_PK, ZWAMESSAGE.ZMESSAGEDATE,
                    ZWAMESSAGE.ZISFROMME, ZWACHATSESSION.ZCONTACTJID,
@@ -67,6 +69,7 @@ actor WhatsAppService {
             FROM ZWAMESSAGE
             LEFT JOIN ZWACHATSESSION ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
             WHERE ZWAMESSAGE.ZMESSAGEDATE > ?
+              AND ZWAMESSAGE.ZMESSAGETYPE IN (0, 8)
             ORDER BY ZWAMESSAGE.ZMESSAGEDATE DESC
             LIMIT 5000
         """

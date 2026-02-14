@@ -48,5 +48,29 @@
 				"problemMatcher": []
 			}
 		]
+	},
+	"launch": {
+		"configurations": [
+			{
+				"type": "swift",
+				"request": "launch",
+				"args": [],
+				"cwd": "${workspaceFolder:cms-family-friends}",
+				"name": "Debug CMSFamilyFriends (cms-family-friends)",
+				"target": "CMSFamilyFriends",
+				"configuration": "debug",
+				"preLaunchTask": "swift: Build Debug CMSFamilyFriends (cms-family-friends)"
+			},
+			{
+				"type": "swift",
+				"request": "launch",
+				"args": [],
+				"cwd": "${workspaceFolder:cms-family-friends}",
+				"name": "Release CMSFamilyFriends (cms-family-friends)",
+				"target": "CMSFamilyFriends",
+				"configuration": "release",
+				"preLaunchTask": "swift: Build Release CMSFamilyFriends (cms-family-friends)"
+			}
+		]
 	}
 }

@@ -94,8 +94,8 @@ actor MailService {
         // Eigene Adressen laden für isOutgoing-Erkennung
         loadUserEmailAddresses(db: db)
         
-        let cocoaOffset: Double = 978307200
-        let cutoffDate = Date().timeIntervalSince1970 - Double(daysPast * 86400) - cocoaOffset
+        // Mail.app speichert Timestamps als Unix-Timestamps (seit 1970)
+        let cutoffDate = Date().timeIntervalSince1970 - Double(daysPast * 86400)
         
         // Privacy by Design: Kein subject/body – nur Metadaten
         let query = """
@@ -122,7 +122,8 @@ actor MailService {
             let sender = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? ""
             let dateSent = sqlite3_column_double(statement, 3)
             
-            let date = Date(timeIntervalSinceReferenceDate: dateSent)
+            // Mail.app speichert date_sent als Unix-Timestamp (seit 1970)
+            let date = Date(timeIntervalSince1970: dateSent)
             let recipients = fetchRecipients(db: db, messageRowId: rowId)
             let isOutgoing = userEmailAddresses.contains(sender.lowercased())
             

@@ -30,6 +30,9 @@ struct SettingsView: View {
                         .onChange(of: launchAtLogin) { _, newValue in
                             setLaunchAtLogin(newValue)
                         }
+                        .onAppear {
+                            syncLaunchAtLoginStatus()
+                        }
                     Toggle("Menüleisten-Symbol", isOn: $enableMenuBar)
                     
                     Toggle("Im Dock behalten (Hintergrund)", isOn: $keepInDock)
@@ -305,21 +308,45 @@ struct SettingsView: View {
     // MARK: - Launch at Login
     
     private func setLaunchAtLogin(_ enabled: Bool) {
+        guard #available(macOS 13.0, *) else { return }
+        
         if enabled {
-            // SMAppService für macOS 13+
-            if #available(macOS 13.0, *) {
-                do {
-                    try SMAppService.mainApp.register()
-                } catch {
+            let status = SMAppService.mainApp.status
+            switch status {
+            case .enabled:
+                return // Bereits registriert
+            case .requiresApproval:
+                // User muss in Systemeinstellungen genehmigen
+                SMAppService.openSystemSettingsLoginItems()
+                return
+            default:
+                break
+            }
+            do {
+                try SMAppService.mainApp.register()
+            } catch {
+                AppLogger.accessDenied(resource: "Launch at Login: \(error.localizedDescription)")
+                // Nicht sofort zurücksetzen – kurz verzögern damit SwiftUI nicht in Loop gerät
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     launchAtLogin = false
                 }
             }
         } else {
-            if #available(macOS 13.0, *) {
-                do {
-                    try SMAppService.mainApp.unregister()
-                } catch { }
+            do {
+                try SMAppService.mainApp.unregister()
+            } catch {
+                AppLogger.accessDenied(resource: "Launch at Login deaktivieren: \(error.localizedDescription)")
             }
+        }
+    }
+    
+    /// Login-Status von SMAppService synchronisieren
+    private func syncLaunchAtLoginStatus() {
+        guard #available(macOS 13.0, *) else { return }
+        let status = SMAppService.mainApp.status
+        let isRegistered = (status == .enabled)
+        if launchAtLogin != isRegistered {
+            launchAtLogin = isRegistered
         }
     }
 }

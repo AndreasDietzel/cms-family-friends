@@ -41,8 +41,8 @@ enum DataSource: String, CaseIterable, Identifiable {
     /// Ob diese Datenquelle Full Disk Access benötigt
     var requiresFullDiskAccess: Bool {
         switch self {
-        case .imessage, .whatsapp, .phone, .email: return true
-        case .calendar, .contacts, .facetime: return false
+        case .imessage, .whatsapp, .phone, .facetime, .email: return true
+        case .calendar, .contacts: return false
         }
     }
 }

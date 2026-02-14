@@ -1,7 +1,9 @@
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @EnvironmentObject var contactManager: ContactManager
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedTab: SidebarTab = .dashboard
     @State private var searchText = ""
     
@@ -25,36 +27,9 @@ struct ContentView: View {
         .searchable(text: $searchText, prompt: "Kontakte durchsuchen...")
         .navigationTitle(selectedTab.title)
         .onAppear {
+            contactManager.modelContext = modelContext
             contactManager.startTracking()
         }
-        .overlay(alignment: .top) {
-            // Sync-Fehler Banner
-            if !contactManager.syncErrors.isEmpty {
-                syncErrorBanner
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut, value: contactManager.syncErrors.isEmpty)
-    }
-    
-    // MARK: - Sync Error Banner
-    private var syncErrorBanner: some View {
-        HStack {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-            Text("\(contactManager.syncErrors.count) Datenquelle(n) mit Fehlern")
-                .font(.caption)
-            Spacer()
-            Button("Details") {
-                selectedTab = .settings
-            }
-            .font(.caption)
-            .buttonStyle(.bordered)
-        }
-        .padding(8)
-        .background(.red.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal)
     }
 }
 

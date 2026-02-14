@@ -304,12 +304,12 @@ struct AddGroupView: View {
     @State private var colorHex = "#007AFF"
     @State private var priority = 50
     @State private var validationError: String?
-    @FocusState private var nameFieldFocused: Bool
     
     let availableIcons = [
         "house.fill", "heart.fill", "person.2.fill",
         "person.fill", "briefcase.fill", "star.fill",
-        "figure.walk", "sportscourt.fill", "music.note"
+        "figure.walk", "sportscourt.fill", "music.note",
+        "building.2.fill", "figure.2.arms.open"
     ]
     
     private var isValid: Bool {
@@ -327,9 +327,8 @@ struct AddGroupView: View {
                     Text("Gruppenname")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("z.B. Familie, Sportverein...", text: $name)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($nameFieldFocused)
+                    AutoFocusTextField(text: $name, placeholder: "z.B. Familie, Sportverein...")
+                        .frame(height: 28)
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
@@ -387,10 +386,53 @@ struct AddGroupView: View {
         }
         .padding()
         .frame(width: 450, height: 400)
-        .onAppear {
-            // Focus auf Namensfeld setzen
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                nameFieldFocused = true
+    }
+}
+
+/// NSTextField-Wrapper der auf macOS zuverlässig Fokus bekommt (löst SwiftUI Sheet-Bug)
+struct AutoFocusTextField: NSViewRepresentable {
+    @Binding var text: String
+    var placeholder: String
+    
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.placeholderString = placeholder
+        field.stringValue = text
+        field.delegate = context.coordinator
+        field.bezelStyle = .roundedBezel
+        field.font = .systemFont(ofSize: 13)
+        // Fokus mit kurzer Verzögerung setzen
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            field.window?.makeFirstResponder(field)
+        }
+        return field
+    }
+    
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        // Binding-Referenz im Coordinator aktualisieren (SwiftUI kann View neu erstellen)
+        context.coordinator.text = $text
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+    
+    class Coordinator: NSObject, NSTextFieldDelegate {
+        var text: Binding<String>
+        init(text: Binding<String>) { self.text = text }
+        
+        func controlTextDidChange(_ obj: Notification) {
+            if let field = obj.object as? NSTextField {
+                text.wrappedValue = field.stringValue
+            }
+        }
+        
+        func controlTextDidEndEditing(_ obj: Notification) {
+            if let field = obj.object as? NSTextField {
+                text.wrappedValue = field.stringValue
             }
         }
     }

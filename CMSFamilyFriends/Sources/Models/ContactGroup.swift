@@ -54,6 +54,7 @@ final class ContactGroup {
         ("Verwandte", "figure.2.arms.open", "#FF6B6B", 200, 30),
         ("Enge Freunde", "heart.fill", "#FF9500", 14, 80),
         ("Freunde", "person.2.fill", "#007AFF", 30, 60),
+        ("Nachbarn", "building.2.fill", "#00C7BE", 120, 35),
         ("Bekannte", "person.fill", "#34C759", 90, 40),
         ("Beruflich", "briefcase.fill", "#5856D6", 60, 50),
     ]

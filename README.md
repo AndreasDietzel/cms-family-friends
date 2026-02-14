@@ -1,139 +1,151 @@
 # CMS Family & Friends
 
-**Automatisches Kontakt-Tracking für macOS** – Bleib mit deiner Familie und deinen Freunden in Verbindung, ohne manuell etwas zu dokumentieren.
+**Automatic contact tracking for macOS** – Stay in touch with the people who matter, without manually logging anything.
 
-## 🎯 Was ist CMS Family & Friends?
+## What is CMS Family & Friends?
 
-CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikation mit wichtigen Menschen trackt. Statt manuell Einträge zu pflegen, gleicht die App automatisch mit deinem Kalender, Telefon, iMessage, WhatsApp, E-Mail und FaceTime ab.
+CMS Family & Friends is a native macOS app that automatically tracks your communication with important people. Instead of maintaining manual records, the app syncs with your Calendar, Phone, iMessage, WhatsApp, Email, and FaceTime.
 
-**Das Ziel:** Du wirst proaktiv erinnert, wenn der Kontakt zu jemandem zu lange ausgesetzt war – basierend auf individuellen Intervallen pro Kontaktgruppe.
+**The Goal:** Get proactive reminders when you haven't been in touch with someone for too long – based on individually configurable intervals per contact group.
 
-## ✨ Features
+## Features
 
-### Automatisches Tracking
-| Datenquelle | API/Zugriff | Status |
-|------------|-------------|--------|
-| 📅 Kalender | EventKit | ✅ Implementiert |
-| 📞 Telefon | CallHistory DB | ✅ Implementiert |
-| 💬 iMessage | Messages SQLite DB | ✅ Implementiert |
-| 📱 WhatsApp | WhatsApp SQLite DB | ✅ Implementiert |
-| ✉️ E-Mail | Mail.app DB | ✅ Implementiert |
-| 📹 FaceTime | Call History | 🔜 Geplant |
-| 👤 Kontakte | Contacts Framework | ✅ Implementiert |
+### Automatic Communication Tracking
+| Data Source | Access Method | Status |
+|-------------|---------------|--------|
+| Calendar | EventKit | ✅ Implemented |
+| Phone Calls | CallHistory SQLite DB | ✅ Implemented |
+| iMessage | Messages SQLite DB | ✅ Implemented |
+| WhatsApp | WhatsApp SQLite DB | ✅ Implemented |
+| Email | Mail.app SQLite DB | ✅ Implemented |
+| FaceTime | CallHistory SQLite DB | ✅ Implemented |
+| Contacts | Contacts Framework | ✅ Implemented |
 
-### Kontaktmanagement
-- **Kontaktgruppen** mit individuellen Intervallen (z.B. Familie: 7 Tage, Freunde: 14 Tage)
-- **Automatische Geburtstags-Erinnerungen**
-- **Dynamische Kontaktpausen-Warnungen** basierend auf Gruppenkonfiguration
-- **Urgency-Level** – visuelle Anzeige der Dringlichkeit
+### Contact Management
+- **Contact groups** with individual intervals (e.g., Family: 7 days, Friends: 14 days, Acquaintances: 90 days)
+- **Default groups:** Family, Relatives, Close Friends, Friends, Neighbors, Acquaintances, Work
+- **Custom groups** with configurable interval, priority, and icon
+- **Manual real-life meeting tracking** – log in-person meetings with a single click
+- **Automatic birthday reminders**
+- **Dynamic overdue warnings** based on group configuration
+- **Urgency level** – visual indicator of how urgently someone needs to be contacted
+- **Batch assignment** of unassigned contacts to groups
 
-### Erinnerungen (Apple Reminders Integration)
-- Eigene Reminders-Liste "CMS Family & Friends"
-- Automatische Erinnerung bei Kontaktpause
-- Priorität basierend auf Kontakt-Wichtigkeit
-- Snooze/Verzögern von Erinnerungen
-- Auto-Abhaken nach erfolgreicher Kontaktaufnahme
+### Reminders (Apple Reminders Integration)
+- Dedicated "CMS Family & Friends" reminders list
+- Automatic reminders when contact has lapsed
+- Priority based on contact importance
+- Snooze/postpone reminders
+- Auto-complete after successful contact
+
+### Privacy by Design
+- **All data stays local** on your Mac – no server, no third parties
+- **No message content is read** – only metadata (sender, date, direction)
+- 100% Apple ecosystem
 
 ### UI
-- Native macOS SwiftUI App
-- Dashboard mit Übersicht
-- Menüleisten-Icon für schnellen Zugriff
-- Echtzeit-Sync im Hintergrund
+- Native macOS SwiftUI app
+- Dashboard with overview of overdue contacts, upcoming birthdays, recent activity
+- Menu bar icon for quick access
+- Background sync at configurable intervals
+- Onboarding flow for initial setup
+- Dock persistence – app keeps running when window is closed
 
-## 🏗️ Architektur
+## Architecture
 
 ```
 CMSFamilyFriends/
 ├── Sources/
-│   ├── App/                    # App-Entry Point
-│   ├── Models/                 # SwiftData Modelle
-│   │   ├── TrackedContact      # Kontakt mit Tracking-Metadaten
-│   │   ├── ContactGroup        # Gruppen mit Intervallen
-│   │   ├── CommunicationEvent  # Einzelne Kommunikations-Events
-│   │   └── ContactReminder     # Erinnerungen
-│   ├── Views/                  # SwiftUI Views
-│   │   ├── Dashboard/          # Hauptübersicht
-│   │   ├── Contacts/           # Kontakt- und Gruppenlisten
-│   │   ├── Settings/           # Einstellungen & Reminders
-│   │   └── Components/         # Wiederverwendbare UI-Komponenten
-│   ├── Services/               # Datenquellen-Services
-│   │   └── DataSources/        # Kalender, iMessage, WhatsApp, etc.
-│   ├── Managers/               # Business Logic
-│   │   ├── ContactManager      # Zentraler Sync-Manager
-│   │   └── ReminderManager     # Apple Reminders Integration
-│   ├── Extensions/             # Swift Extensions
-│   └── Utilities/              # Hilfsfunktionen
-├── Assets.xcassets/            # App-Assets
-└── Resources/                  # Sonstige Ressourcen
+│   ├── App/                    # App entry point & AppDelegate
+│   ├── Models/                 # SwiftData models
+│   │   ├── TrackedContact      # Contact with tracking metadata
+│   │   ├── ContactGroup        # Groups with intervals & priorities
+│   │   ├── CommunicationEvent  # Individual communication events
+│   │   ├── ContactReminder     # Reminders
+│   │   └── DataSource          # Data source status tracking
+│   ├── Views/                  # SwiftUI views
+│   │   ├── Dashboard/          # Main overview
+│   │   ├── Contacts/           # Contact lists, groups, import
+│   │   ├── Settings/           # Settings & reminder management
+│   │   ├── Onboarding/         # First-run setup
+│   │   └── Components/         # Reusable UI components
+│   ├── Services/               # Data source services
+│   │   └── DataSources/        # Calendar, iMessage, WhatsApp, etc.
+│   ├── Managers/               # Business logic
+│   │   ├── ContactManager      # Central sync manager with deduplication
+│   │   └── ReminderManager     # Apple Reminders integration
+│   ├── Extensions/             # Swift extensions
+│   └── Utilities/              # Logging, data export
+├── Assets.xcassets/            # App icons & assets
+└── Resources/                  # Info.plist & resources
 ```
 
-## 🔒 Datenschutz
+## Tech Stack
 
-- **Alle Daten bleiben lokal** auf deinem Mac
-- **iCloud Sync** für mehrere Geräte (optional)
-- **Kein Server, keine Drittanbieter** – 100% Apple-Ökosystem
-- Full Disk Access erforderlich für iMessage, WhatsApp, Anrufhistorie
+- **Language:** Swift 5.9+
+- **UI:** SwiftUI
+- **Persistence:** SwiftData
+- **Platform:** macOS 14+ (Sonoma)
+- **APIs:** EventKit, Contacts Framework, SQLite3, UserNotifications
 
-## 🛠️ Technischer Stack
+## Requirements
 
-- **Sprache:** Swift 5.9+
-- **UI Framework:** SwiftUI
-- **Datenbank:** SwiftData (Core Data successor)
-- **Plattform:** macOS 14+ (Sonoma)
-- **APIs:** EventKit, Contacts, SQLite3, UserNotifications
-
-## 📋 Voraussetzungen
-
-- macOS 14 (Sonoma) oder neuer
+- macOS 14 (Sonoma) or later
 - Xcode 15+
-- Full Disk Access (für iMessage, WhatsApp, Anrufhistorie)
-- Kalender- und Kontakte-Berechtigung
+- Full Disk Access (required for iMessage, WhatsApp, Phone/FaceTime call history, Mail)
+- Calendar and Contacts permissions
 
-## 🚀 Setup
+## Getting Started
 
-1. Repository klonen:
+1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/AndreasDietzel/cms-family-friends.git
    ```
 
-2. In Xcode öffnen:
+2. Open in Xcode:
    ```bash
    open Package.swift
    ```
 
-3. Build & Run (⌘R)
+3. Build & Run (`Cmd+R`)
 
-4. In Systemeinstellungen: Full Disk Access für die App aktivieren
+4. Grant permissions:
+   - **Calendar & Contacts** – the app will prompt automatically
+   - **Full Disk Access** – enable manually in System Settings → Privacy & Security → Full Disk Access
 
-## 📅 Roadmap
+## Roadmap
 
 ### Phase 1 (MVP) ✅
-- [x] Grundstruktur & Datenmodell
-- [x] Kalender-Integration
-- [x] Kontakte-Integration
-- [x] iMessage-Tracking
-- [x] WhatsApp-Tracking
-- [x] Telefon-History
-- [x] Mail-Tracking
-- [x] Reminders-Integration
+- [x] Data model & core architecture
+- [x] Calendar integration (EventKit)
+- [x] Contacts integration (Contacts Framework)
+- [x] iMessage tracking (SQLite)
+- [x] WhatsApp tracking (SQLite)
+- [x] Phone call history (SQLite)
+- [x] FaceTime tracking (SQLite)
+- [x] Email tracking (Mail.app SQLite)
+- [x] Apple Reminders integration
 - [x] Dashboard UI
-- [x] Kontaktgruppen mit Intervallen
-- [x] Geburtstags-Erinnerungen
-- [x] Kontaktpausen-Warnungen
+- [x] Contact groups with intervals
+- [x] Birthday reminders
+- [x] Overdue contact warnings
+- [x] Menu bar extra
+- [x] Real-life meeting tracking
+- [x] Contact import from macOS Contacts
+- [x] Batch group assignment
 
 ### Phase 2
-- [ ] FaceTime-Integration
 - [ ] iCloud Sync
-- [ ] Detaillierte Kontakt-Statistiken
-- [ ] Export/Import
-- [ ] Widgets
+- [ ] Detailed contact statistics & charts
+- [ ] CSV/JSON export & import
+- [ ] macOS Widgets
 
 ### Phase 3
 - [ ] iOS Companion App
-- [ ] Apple Watch Komplikation
-- [ ] KI-basierte Kontaktempfehlungen
-- [ ] Shortcuts-Integration
+- [ ] Apple Watch complication
+- [ ] AI-based contact recommendations
+- [ ] Shortcuts integration
 
-## 📄 Lizenz
+## License
 
-Privates Projekt – Alle Rechte vorbehalten.
+MIT License – see [LICENSE](LICENSE) for details.

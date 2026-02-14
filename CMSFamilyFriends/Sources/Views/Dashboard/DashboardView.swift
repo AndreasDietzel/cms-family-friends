@@ -17,11 +17,6 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Sync-Fehler Banner
-                if !contactManager.syncErrors.isEmpty {
-                    syncErrorBanner
-                }
-                
                 // Header mit Sync-Status
                 headerSection
                 
@@ -42,29 +37,6 @@ struct DashboardView: View {
             }
             .padding()
         }
-    }
-    
-    // MARK: - Sync Error Banner
-    private var syncErrorBanner: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Sync-Probleme", systemImage: "exclamationmark.triangle.fill")
-                .font(.headline)
-                .foregroundStyle(.orange)
-            ForEach(contactManager.syncErrors) { error in
-                HStack {
-                    Image(systemName: error.source.icon)
-                        .frame(width: 16)
-                    Text(error.source.displayName)
-                        .fontWeight(.medium)
-                    Text(error.message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding()
-        .background(.orange.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
     // MARK: - Header
@@ -261,12 +233,19 @@ struct DashboardView: View {
                         VStack(alignment: .leading) {
                             Text(event.contact?.fullName ?? "Unbekannt")
                                 .fontWeight(.medium)
-                            Text(event.date.relativeString)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 6) {
+                                Text(event.channel.displayName)
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                                Text("·")
+                                    .foregroundStyle(.secondary)
+                                Text(event.date.relativeString)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Spacer()
-                        Text(event.direction == .incoming ? "Eingehend" : "Ausgehend")
+                        Text(event.direction.displayName)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -280,16 +259,7 @@ struct DashboardView: View {
     }
     
     private func channelIcon(_ channel: CommunicationChannel) -> String {
-        switch channel {
-        case .phone: return "phone.fill"
-        case .imessage: return "message.fill"
-        case .whatsapp: return "bubble.left.fill"
-        case .email: return "envelope.fill"
-        case .facetime: return "video.fill"
-        case .calendar: return "calendar"
-        case .manual: return "pencil"
-        case .unknown: return "questionmark.circle"
-        }
+        channel.icon
     }
 }
 
