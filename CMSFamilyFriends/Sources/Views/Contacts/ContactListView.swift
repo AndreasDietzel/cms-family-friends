@@ -7,6 +7,7 @@ struct ContactListView: View {
     @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
     @Binding var searchText: String
     @State private var showingAddContact = false
+    @State private var showingImportContacts = false
     @State private var selectedContact: TrackedContact?
     @State private var sortOrder: SortOrder = .name
     @State private var selectedGroupFilter: ContactGroup?
@@ -77,8 +78,13 @@ struct ContactListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
+                Button(action: { showingImportContacts = true }) {
+                    Label("Aus Kontakte importieren", systemImage: "person.crop.circle.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                
                 Button(action: { showingAddContact = true }) {
-                    Label("Kontakt hinzufügen", systemImage: "plus")
+                    Label("Manuell hinzufügen", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -110,6 +116,9 @@ struct ContactListView: View {
         }
         .sheet(isPresented: $showingAddContact) {
             AddContactView()
+        }
+        .sheet(isPresented: $showingImportContacts) {
+            ImportContactsView()
         }
         .sheet(item: $selectedContact) { contact in
             ContactDetailView(contact: contact)
