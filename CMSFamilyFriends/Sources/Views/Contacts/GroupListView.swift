@@ -84,7 +84,8 @@ struct GroupListView: View {
 }
 
 struct GroupDetailRow: View {
-    let group: ContactGroup
+    @Bindable var group: ContactGroup
+    @State private var showEditSheet = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -117,9 +118,120 @@ struct GroupDetailRow: View {
                             .clipShape(Capsule())
                     }
                 }
+                
+                Button(action: { showEditSheet = true }) {
+                    Image(systemName: "pencil.circle")
+                        .font(.title3)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+                .help("Gruppe bearbeiten")
             }
         }
         .padding(.vertical, 4)
+        .sheet(isPresented: $showEditSheet) {
+            EditGroupView(group: group)
+        }
+    }
+}
+
+// MARK: - Gruppe bearbeiten
+struct EditGroupView: View {
+    @Bindable var group: ContactGroup
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var name = ""
+    @State private var interval = 14
+    @State private var warningDays = 3
+    @State private var icon = "person.2"
+    @State private var priority = 50
+    
+    let availableIcons = [
+        "house.fill", "heart.fill", "person.2.fill",
+        "person.fill", "briefcase.fill", "star.fill",
+        "figure.walk", "sportscourt.fill", "music.note"
+    ]
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Gruppe bearbeiten")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            Form {
+                TextField("Gruppenname", text: $name)
+                
+                Section("Kontaktzyklus") {
+                    Stepper("Intervall: \(interval) Tage", value: $interval, in: 1...365)
+                    Text("Kontakte in dieser Gruppe sollten alle \(interval) Tage kontaktiert werden.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    Stepper("Warnung: \(warningDays) Tage vorher", value: $warningDays, in: 1...interval)
+                }
+                
+                Section("Darstellung") {
+                    Stepper("Priorität: \(priority)", value: $priority, in: 0...100)
+                    
+                    Picker("Symbol", selection: $icon) {
+                        ForEach(availableIcons, id: \.self) { iconName in
+                            Label(iconName, systemImage: iconName).tag(iconName)
+                        }
+                    }
+                }
+                
+                Section("Kontakte (\(group.contacts.count))") {
+                    if group.contacts.isEmpty {
+                        Text("Keine Kontakte in dieser Gruppe")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(group.contacts.sorted { $0.lastName < $1.lastName }, id: \.id) { contact in
+                            HStack {
+                                Text(contact.fullName)
+                                Spacer()
+                                if let custom = contact.customContactIntervalDays {
+                                    Text("eigener Zyklus: \(custom)d")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                                if contact.isOverdue {
+                                    Circle()
+                                        .fill(.red)
+                                        .frame(width: 8, height: 8)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            
+            HStack {
+                Button("Abbrechen") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                
+                Button("Speichern") {
+                    group.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    group.contactIntervalDays = max(1, interval)
+                    group.warningThresholdDays = max(1, warningDays)
+                    group.icon = icon
+                    group.priority = priority
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 500, height: 550)
+        .onAppear {
+            name = group.name
+            interval = group.contactIntervalDays
+            warningDays = group.warningThresholdDays
+            icon = group.icon
+            priority = group.priority
+        }
     }
 }
 

@@ -42,6 +42,14 @@ final class TrackedContact {
     /// Aktiv/Inaktiv
     var isActive: Bool
     
+    /// Individueller Kontakt-Zyklus in Tagen (überschreibt Gruppen-Zyklus wenn gesetzt)
+    var customContactIntervalDays: Int?
+    
+    /// Effektives Intervall: Kontakt-Zyklus > Gruppen-Zyklus > nil
+    var effectiveIntervalDays: Int? {
+        customContactIntervalDays ?? group?.contactIntervalDays
+    }
+    
     var fullName: String {
         [firstName, lastName].filter { !$0.isEmpty }.joined(separator: " ")
     }
@@ -52,17 +60,17 @@ final class TrackedContact {
         return Calendar.current.dateComponents([.day], from: lastContact, to: Date()).day
     }
     
-    /// Ist der Kontakt überfällig basierend auf Gruppen-Intervall?
+    /// Ist der Kontakt überfällig basierend auf effektivem Intervall?
     var isOverdue: Bool {
         guard let days = daysSinceLastContact,
-              let interval = group?.contactIntervalDays else { return false }
+              let interval = effectiveIntervalDays else { return false }
         return days > interval
     }
     
     /// Dringlichkeitslevel (0.0 - 1.0+)
     var urgencyLevel: Double {
         guard let days = daysSinceLastContact,
-              let interval = group?.contactIntervalDays,
+              let interval = effectiveIntervalDays,
               interval > 0 else { return 0 }
         return Double(days) / Double(interval)
     }

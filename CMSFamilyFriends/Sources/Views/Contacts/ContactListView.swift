@@ -191,14 +191,75 @@ struct ContactRowView: View {
 
 // MARK: - Contact Detail View
 struct ContactDetailView: View {
-    let contact: TrackedContact
+    @Bindable var contact: TrackedContact
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
+    
+    @State private var isEditing = false
+    @State private var editFirstName = ""
+    @State private var editLastName = ""
+    @State private var editNickname = ""
+    @State private var editNotes = ""
+    @State private var editGroup: ContactGroup?
+    @State private var useCustomInterval = false
+    @State private var editCustomInterval = 14
     
     var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            ContactAvatarView(contact: contact, size: 80)
-            
+        ScrollView {
+            VStack(spacing: 20) {
+                // Header
+                ContactAvatarView(contact: contact, size: 80)
+                
+                if isEditing {
+                    editingHeader
+                } else {
+                    displayHeader
+                }
+                
+                Divider()
+                
+                // Gruppe & Zyklus
+                groupAndCycleSection
+                
+                Divider()
+                
+                // Kommunikationshistorie
+                communicationSection
+                
+                // Buttons
+                HStack(spacing: 12) {
+                    if isEditing {
+                        Button("Abbrechen") {
+                            isEditing = false
+                        }
+                        .keyboardShortcut(.cancelAction)
+                        
+                        Button("Speichern") {
+                            saveChanges()
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Bearbeiten") {
+                            startEditing()
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Schließen") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
+                    }
+                }
+            }
+            .padding()
+        }
+        .frame(width: 520, height: 650)
+    }
+    
+    // MARK: - Display Header
+    
+    private var displayHeader: some View {
+        VStack(spacing: 4) {
             Text(contact.fullName)
                 .font(.title)
                 .fontWeight(.bold)
@@ -214,18 +275,129 @@ struct ContactDetailView: View {
                          value: contact.lastContactDate?.relativeString ?? "Nie")
                 statItem("Kommunikationen",
                          value: "\(contact.communicationEvents.count)")
-                statItem("Gruppe",
-                         value: contact.group?.name ?? "Keine")
             }
+        }
+    }
+    
+    // MARK: - Editing Header
+    
+    private var editingHeader: some View {
+        VStack(spacing: 8) {
+            HStack {
+                TextField("Vorname", text: $editFirstName)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Nachname", text: $editLastName)
+                    .textFieldStyle(.roundedBorder)
+            }
+            TextField("Spitzname (optional)", text: $editNickname)
+                .textFieldStyle(.roundedBorder)
+            TextField("Notizen", text: $editNotes, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...4)
+        }
+        .frame(maxWidth: 400)
+    }
+    
+    // MARK: - Gruppe & Zyklus
+    
+    private var groupAndCycleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Gruppe & Kontaktzyklus")
+                .font(.headline)
             
-            Divider()
+            if isEditing {
+                // Gruppen-Auswahl
+                Picker("Gruppe", selection: $editGroup) {
+                    Text("Keine Gruppe").tag(nil as ContactGroup?)
+                    ForEach(groups, id: \.id) { group in
+                        Label("\(group.name) (alle \(group.contactIntervalDays) Tage)",
+                              systemImage: group.icon)
+                            .tag(group as ContactGroup?)
+                    }
+                }
+                .pickerStyle(.menu)
+                
+                Divider()
+                
+                // Individueller Zyklus
+                Toggle("Eigenen Kontaktzyklus verwenden", isOn: $useCustomInterval)
+                
+                if useCustomInterval {
+                    HStack {
+                        Text("Alle")
+                        TextField("", value: $editCustomInterval, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("Tage kontaktieren")
+                    }
+                    .font(.callout)
+                    
+                    if let groupInterval = editGroup?.contactIntervalDays {
+                        Text("Überschreibt den Gruppen-Zyklus von \(groupInterval) Tagen")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            } else {
+                // Anzeige
+                HStack {
+                    Image(systemName: contact.group?.icon ?? "person.fill.questionmark")
+                        .foregroundStyle(Color(hex: contact.group?.colorHex ?? "#999") ?? .gray)
+                    Text(contact.group?.name ?? "Keine Gruppe")
+                        .fontWeight(.medium)
+                    
+                    Spacer()
+                    
+                    if let interval = contact.effectiveIntervalDays {
+                        Text("alle \(interval) Tage")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                if contact.customContactIntervalDays != nil {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.badge.clock")
+                            .font(.caption)
+                        Text("Eigener Zyklus: \(contact.customContactIntervalDays!) Tage")
+                            .font(.caption)
+                            .foregroundStyle(.blue)
+                        
+                        if let groupInterval = contact.group?.contactIntervalDays {
+                            Text("(Gruppe: \(groupInterval) Tage)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
+                if let notes = contact.notes, !notes.isEmpty {
+                    Text(notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    
+    // MARK: - Kommunikation
+    
+    private var communicationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Kommunikationshistorie")
+                .font(.headline)
             
-            // Kommunikationshistorie
             if contact.communicationEvents.isEmpty {
                 Text("Noch keine Kommunikation erfasst")
                     .foregroundStyle(.secondary)
+                    .padding()
             } else {
-                List(contact.communicationEvents.sorted { $0.date > $1.date }.prefix(20), id: \.id) { event in
+                ForEach(contact.communicationEvents.sorted { $0.date > $1.date }.prefix(15), id: \.id) { event in
                     HStack {
                         Text(event.date.relativeString)
                             .font(.caption)
@@ -238,12 +410,30 @@ struct ContactDetailView: View {
                     }
                 }
             }
-            
-            Button("Schließen") { dismiss() }
-                .keyboardShortcut(.cancelAction)
         }
-        .padding()
-        .frame(width: 500, height: 600)
+    }
+    
+    // MARK: - Actions
+    
+    private func startEditing() {
+        editFirstName = contact.firstName
+        editLastName = contact.lastName
+        editNickname = contact.nickname ?? ""
+        editNotes = contact.notes ?? ""
+        editGroup = contact.group
+        useCustomInterval = contact.customContactIntervalDays != nil
+        editCustomInterval = contact.customContactIntervalDays ?? contact.group?.contactIntervalDays ?? 14
+        isEditing = true
+    }
+    
+    private func saveChanges() {
+        contact.firstName = editFirstName
+        contact.lastName = editLastName
+        contact.nickname = editNickname.isEmpty ? nil : editNickname
+        contact.notes = editNotes.isEmpty ? nil : editNotes
+        contact.group = editGroup
+        contact.customContactIntervalDays = useCustomInterval ? max(1, editCustomInterval) : nil
+        isEditing = false
     }
     
     private func statItem(_ label: String, value: String) -> some View {
