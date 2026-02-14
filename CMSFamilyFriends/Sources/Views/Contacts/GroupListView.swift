@@ -10,36 +10,46 @@ struct GroupListView: View {
     @State private var showDeleteConfirmation = false
     
     var body: some View {
-        VStack {
-            HStack {
-                Text("Kontaktgruppen")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                Button(action: { showingAddGroup = true }) {
-                    Label("Gruppe hinzufügen", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                
+        NavigationStack {
+            List {
                 if groups.isEmpty {
-                    Button("Standard-Gruppen erstellen") {
-                        createDefaultGroups()
+                    ContentUnavailableView {
+                        Label("Keine Gruppen", systemImage: "person.3")
+                    } description: {
+                        Text("Erstelle deine erste Gruppe oder nutze die Standard-Gruppen.")
+                    } actions: {
+                        Button("Standard-Gruppen erstellen") {
+                            createDefaultGroups()
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.bordered)
+                } else {
+                    ForEach(groups, id: \.id) { group in
+                        GroupDetailRow(group: group)
+                            .contextMenu {
+                                Button("Löschen", role: .destructive) {
+                                    groupToDelete = group
+                                    showDeleteConfirmation = true
+                                }
+                            }
+                    }
                 }
             }
-            .padding(.horizontal)
-            
-            List(groups, id: \.id) { group in
-                GroupDetailRow(group: group)
-                    .contextMenu {
-                        Button("Löschen", role: .destructive) {
-                            groupToDelete = group
-                            showDeleteConfirmation = true
+            .navigationTitle("Kontaktgruppen")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: { showingAddGroup = true }) {
+                        Label("Gruppe hinzufügen", systemImage: "plus")
+                    }
+                }
+                
+                if groups.isEmpty {
+                    ToolbarItem(placement: .automatic) {
+                        Button("Standard-Gruppen erstellen") {
+                            createDefaultGroups()
                         }
                     }
+                }
             }
         }
         .sheet(isPresented: $showingAddGroup) {
