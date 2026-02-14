@@ -27,7 +27,9 @@ actor CalendarService {
             throw ServiceError.notAuthorized("Kalender-Zugriff nicht gewährt")
         }
         
-        let startDate = Calendar.current.date(byAdding: .day, value: -daysPast, to: Date())!
+        guard let startDate = Calendar.current.date(byAdding: .day, value: -daysPast, to: Date()) else {
+            throw ServiceError.databaseError("Ungültiger Datumswert")
+        }
         let endDate = Date()
         
         let predicate = eventStore.predicateForEvents(

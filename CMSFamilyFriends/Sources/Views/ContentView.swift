@@ -13,7 +13,7 @@ struct ContentView: View {
             case .dashboard:
                 DashboardView()
             case .contacts:
-                ContactListView()
+                ContactListView(searchText: $searchText)
             case .groups:
                 GroupListView()
             case .reminders:
@@ -27,6 +27,34 @@ struct ContentView: View {
         .onAppear {
             contactManager.startTracking()
         }
+        .overlay(alignment: .top) {
+            // Sync-Fehler Banner
+            if !contactManager.syncErrors.isEmpty {
+                syncErrorBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut, value: contactManager.syncErrors.isEmpty)
+    }
+    
+    // MARK: - Sync Error Banner
+    private var syncErrorBanner: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            Text("\(contactManager.syncErrors.count) Datenquelle(n) mit Fehlern")
+                .font(.caption)
+            Spacer()
+            Button("Details") {
+                selectedTab = .settings
+            }
+            .font(.caption)
+            .buttonStyle(.bordered)
+        }
+        .padding(8)
+        .background(.red.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal)
     }
 }
 
@@ -52,14 +80,26 @@ enum SidebarTab: String, CaseIterable {
 
 struct SidebarView: View {
     @Binding var selectedTab: SidebarTab
+    @EnvironmentObject var contactManager: ContactManager
     
     var body: some View {
         List(SidebarTab.allCases, id: \.self, selection: $selectedTab) { tab in
             Label(tab.title, systemImage: tab.icon)
                 .tag(tab)
+                .badge(badgeCount(for: tab))
+                .accessibilityLabel("\(tab.title)\(badgeCount(for: tab) > 0 ? ", \(badgeCount(for: tab)) Einträge" : "")")
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+    }
+    
+    private func badgeCount(for tab: SidebarTab) -> Int {
+        switch tab {
+        case .settings:
+            return contactManager.syncErrors.count
+        default:
+            return 0
+        }
     }
 }
 
@@ -73,14 +113,22 @@ struct MenuBarView: View {
             
             Divider()
             
-            Text("Keine überfälligen Kontakte")
-                .foregroundStyle(.secondary)
-                .font(.caption)
+            if contactManager.isSyncing {
+                Label("Synchronisiere...", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Keine überfälligen Kontakte")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
             
             Divider()
-            
-            Button("CMS öffnen") {
-                NSWorkspace.shared.open(URL(string: "cmsfamilyfriends://open")!)
+
+            if let url = URL(string: "cmsfamilyfriends://open") {
+                Button("CMS öffnen") {
+                    NSWorkspace.shared.open(url)
+                }
             }
             
             Button("Beenden") {

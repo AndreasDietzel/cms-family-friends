@@ -6,9 +6,9 @@ import SQLite3
 /// Erfordert Full Disk Access
 actor WhatsAppService {
     
+    /// Metadaten-Struct – bewusst KEIN Nachrichtentext (Datenschutz / Privacy by Design)
     struct WhatsAppMessage {
         let messageId: Int64
-        let text: String?
         let date: Date
         let isFromMe: Bool
         let contactName: String?
@@ -59,9 +59,9 @@ actor WhatsAppService {
         // WhatsApp verwendet Unix-Timestamps
         let cutoffTimestamp = Int64(Date().timeIntervalSince1970) - Int64(daysPast * 86400)
         
-        // WhatsApp DB Schema kann variieren - versuche gängiges Schema
+        // Privacy by Design: Kein ZTEXT abfragen – nur Metadaten
         let query = """
-            SELECT ZWAMESSAGE.Z_PK, ZWAMESSAGE.ZTEXT, ZWAMESSAGE.ZMESSAGEDATE,
+            SELECT ZWAMESSAGE.Z_PK, ZWAMESSAGE.ZMESSAGEDATE,
                    ZWAMESSAGE.ZISFROMME, ZWACHATSESSION.ZCONTACTJID,
                    ZWACHATSESSION.ZPARTNERNAME
             FROM ZWAMESSAGE
@@ -87,11 +87,10 @@ actor WhatsAppService {
         var messages: [WhatsAppMessage] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             let messageId = sqlite3_column_int64(statement, 0)
-            let text = sqlite3_column_text(statement, 1).map { String(cString: $0) }
-            let dateValue = sqlite3_column_double(statement, 2)
-            let isFromMe = sqlite3_column_int(statement, 3) == 1
-            let contactJid = sqlite3_column_text(statement, 4).map { String(cString: $0) }
-            let partnerName = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+            let dateValue = sqlite3_column_double(statement, 1)
+            let isFromMe = sqlite3_column_int(statement, 2) == 1
+            let contactJid = sqlite3_column_text(statement, 3).map { String(cString: $0) }
+            let partnerName = sqlite3_column_text(statement, 4).map { String(cString: $0) }
             
             let date = Date(timeIntervalSinceReferenceDate: dateValue)
             
@@ -100,7 +99,6 @@ actor WhatsAppService {
             
             messages.append(WhatsAppMessage(
                 messageId: messageId,
-                text: text,
                 date: date,
                 isFromMe: isFromMe,
                 contactName: partnerName,

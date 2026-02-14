@@ -2,14 +2,19 @@ import Foundation
 import Contacts
 import EventKit
 import Combine
+import os.log
 
 /// Zentrale Manager-Klasse für Kontakt-Tracking
+/// ISO 25010: Logging statt print(), Rate-Limiting, Graceful Degradation, dynamischer Status
 @MainActor
 class ContactManager: ObservableObject {
     // MARK: - Published Properties
     @Published var isTracking = false
     @Published var lastSyncDate: Date?
     @Published var syncErrors: [SyncError] = []
+    @Published var isSyncing = false
+    @Published var dataSourceStatuses: [DataSource: DataSourceStatus] = [:]
+    @Published var lastSyncResults: [DataSource: Int] = [:]
     
     // MARK: - Data Source Services
     private let calendarService = CalendarService()
@@ -19,24 +24,36 @@ class ContactManager: ObservableObject {
     private let whatsAppService = WhatsAppService()
     private let mailService = MailService()
     
-    // MARK: - Tracking Timer
+    // MARK: - Tracking Timer & Rate-Limiting
     private var syncTimer: Timer?
-    private let syncIntervalMinutes: Double = 30
+    private var lastSyncStartTime: Date?
+    private let minimumSyncIntervalSeconds: TimeInterval = 60
+    
+    var syncIntervalMinutes: Double {
+        Double(max(15, min(120, UserDefaults.standard.integer(forKey: "syncIntervalMinutes"))))
+    }
     
     // MARK: - Lifecycle
+    
+    init() {
+        for source in DataSource.allCases {
+            dataSourceStatuses[source] = .checking
+        }
+    }
     
     /// Startet das automatische Tracking
     func startTracking() {
         guard !isTracking else { return }
         isTracking = true
+        AppLogger.syncStarted()
         
-        // Initialer Sync
         Task {
+            await checkDataSourceAvailability()
             await performSync()
         }
         
-        // Timer für regelmäßigen Sync
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncIntervalMinutes * 60, repeats: true) { [weak self] _ in
+        let interval = max(syncIntervalMinutes, 15) * 60
+        syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.performSync()
             }
@@ -50,100 +67,115 @@ class ContactManager: ObservableObject {
         syncTimer = nil
     }
     
-    // MARK: - Sync
+    // MARK: - Data Source Availability Check
     
-    /// Führt einen vollständigen Sync aller Datenquellen durch
-    func performSync() async {
-        syncErrors.removeAll()
+    func checkDataSourceAvailability() async {
+        dataSourceStatuses[.calendar] = .checking
+        dataSourceStatuses[.contacts] = .checking
         
-        // Paralleler Sync aller Datenquellen
-        await withTaskGroup(of: SyncError?.self) { group in
-            group.addTask { await self.syncCalendarEvents() }
-            group.addTask { await self.syncContacts() }
-            group.addTask { await self.syncMessages() }
-            group.addTask { await self.syncCallHistory() }
-            group.addTask { await self.syncWhatsApp() }
-            group.addTask { await self.syncMail() }
+        let messageAccess = await messageService.checkAccess()
+        dataSourceStatuses[.imessage] = messageAccess ? .connected : .needsAccess
+        
+        let whatsAppAccess = await whatsAppService.checkAccess()
+        dataSourceStatuses[.whatsapp] = whatsAppAccess ? .connected : .unavailable(reason: "Nicht installiert")
+        
+        let callAccess = await callHistoryService.checkAccess()
+        dataSourceStatuses[.phone] = callAccess ? .connected : .needsAccess
+        
+        let mailAccess = await mailService.checkAccess()
+        dataSourceStatuses[.email] = mailAccess ? .connected : .needsAccess
+        
+        dataSourceStatuses[.facetime] = .disabled
+    }
+    
+    // MARK: - Sync (mit Rate-Limiting & Graceful Degradation)
+    
+    func performSync() async {
+        if let lastStart = lastSyncStartTime,
+           Date().timeIntervalSince(lastStart) < minimumSyncIntervalSeconds {
+            return
+        }
+        
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncStartTime = Date()
+        syncErrors.removeAll()
+        lastSyncResults.removeAll()
+        
+        AppLogger.syncStarted()
+        
+        await withTaskGroup(of: (DataSource, Result<Int, Error>).self) { group in
+            group.addTask { await (.calendar, self.syncCalendarEvents()) }
+            group.addTask { await (.contacts, self.syncContacts()) }
+            group.addTask { await (.imessage, self.syncMessages()) }
+            group.addTask { await (.phone, self.syncCallHistory()) }
+            group.addTask { await (.whatsapp, self.syncWhatsApp()) }
+            group.addTask { await (.email, self.syncMail()) }
             
-            for await error in group {
-                if let error = error {
-                    syncErrors.append(error)
+            for await (source, result) in group {
+                switch result {
+                case .success(let count):
+                    lastSyncResults[source] = count
+                    dataSourceStatuses[source] = .connected
+                    AppLogger.syncCompleted(source: source, itemCount: count)
+                case .failure(let error):
+                    syncErrors.append(SyncError(source: source, message: error.localizedDescription))
+                    if let serviceError = error as? ServiceError {
+                        switch serviceError {
+                        case .notAuthorized:
+                            dataSourceStatuses[source] = .needsAccess
+                        case .notAvailable(let msg):
+                            dataSourceStatuses[source] = .unavailable(reason: msg)
+                        default:
+                            dataSourceStatuses[source] = .unavailable(reason: "Fehler")
+                        }
+                    }
+                    AppLogger.syncFailed(source: source, error: error)
                 }
             }
         }
         
         lastSyncDate = Date()
+        isSyncing = false
     }
     
     // MARK: - Individual Syncs
     
-    private func syncCalendarEvents() async -> SyncError? {
-        do {
-            let events = try await calendarService.fetchRecentEvents()
-            // TODO: Events mit Kontakten matchen und CommunicationEvents erstellen
-            print("📅 \(events.count) Kalender-Events gefunden")
-            return nil
-        } catch {
-            return SyncError(source: .calendar, message: error.localizedDescription)
-        }
+    private func syncCalendarEvents() async -> Result<Int, Error> {
+        do { return .success(try await calendarService.fetchRecentEvents().count) }
+        catch { return .failure(error) }
     }
     
-    private func syncContacts() async -> SyncError? {
-        do {
-            let contacts = try await contactsService.fetchAllContacts()
-            // TODO: Kontakte importieren/aktualisieren
-            print("👤 \(contacts.count) Kontakte gefunden")
-            return nil
-        } catch {
-            return SyncError(source: .calendar, message: error.localizedDescription)
-        }
+    private func syncContacts() async -> Result<Int, Error> {
+        do { return .success(try await contactsService.fetchAllContacts().count) }
+        catch { return .failure(error) }
     }
     
-    private func syncMessages() async -> SyncError? {
-        do {
-            let messages = try await messageService.fetchRecentMessages()
-            print("💬 \(messages.count) iMessages gefunden")
-            return nil
-        } catch {
-            return SyncError(source: .imessage, message: error.localizedDescription)
-        }
+    private func syncMessages() async -> Result<Int, Error> {
+        do { return .success(try await messageService.fetchRecentMessages().count) }
+        catch { return .failure(error) }
     }
     
-    private func syncCallHistory() async -> SyncError? {
-        do {
-            let calls = try await callHistoryService.fetchRecentCalls()
-            print("📞 \(calls.count) Anrufe gefunden")
-            return nil
-        } catch {
-            return SyncError(source: .phone, message: error.localizedDescription)
-        }
+    private func syncCallHistory() async -> Result<Int, Error> {
+        do { return .success(try await callHistoryService.fetchRecentCalls().count) }
+        catch { return .failure(error) }
     }
     
-    private func syncWhatsApp() async -> SyncError? {
-        do {
-            let messages = try await whatsAppService.fetchRecentMessages()
-            print("📱 \(messages.count) WhatsApp-Nachrichten gefunden")
-            return nil
-        } catch {
-            return SyncError(source: .whatsapp, message: error.localizedDescription)
-        }
+    private func syncWhatsApp() async -> Result<Int, Error> {
+        do { return .success(try await whatsAppService.fetchRecentMessages().count) }
+        catch { return .failure(error) }
     }
     
-    private func syncMail() async -> SyncError? {
-        do {
-            let emails = try await mailService.fetchRecentEmails()
-            print("📧 \(emails.count) E-Mails gefunden")
-            return nil
-        } catch {
-            return SyncError(source: .email, message: error.localizedDescription)
-        }
+    private func syncMail() async -> Result<Int, Error> {
+        do { return .success(try await mailService.fetchRecentEmails().count) }
+        catch { return .failure(error) }
     }
 }
 
-// MARK: - Sync Error
+// MARK: - Sync Error (mit DataSource statt CommunicationChannel)
 struct SyncError: Identifiable {
     let id = UUID()
-    let source: CommunicationChannel
+    let source: DataSource
     let message: String
     let timestamp = Date()
 }

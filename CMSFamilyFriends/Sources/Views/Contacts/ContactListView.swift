@@ -1,12 +1,17 @@
 import SwiftUI
 import SwiftData
 
-/// Kontaktliste
+/// Kontaktliste mit Suche, Gruppenfilter, Sortierung
 struct ContactListView: View {
     @Query(sort: \TrackedContact.lastName) private var contacts: [TrackedContact]
+    @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
+    @Binding var searchText: String
     @State private var showingAddContact = false
     @State private var selectedContact: TrackedContact?
     @State private var sortOrder: SortOrder = .name
+    @State private var selectedGroupFilter: ContactGroup?
+    @State private var contactToDelete: TrackedContact?
+    @State private var showDeleteConfirmation = false
     
     enum SortOrder: String, CaseIterable {
         case name = "Name"
@@ -14,19 +19,39 @@ struct ContactListView: View {
         case urgency = "Dringlichkeit"
     }
     
-    var sortedContacts: [TrackedContact] {
+    var filteredAndSortedContacts: [TrackedContact] {
+        var result = contacts
+        
+        // Gruppenfilter
+        if let group = selectedGroupFilter {
+            result = result.filter { $0.group?.id == group.id }
+        }
+        
+        // Suchfilter
+        if !searchText.isEmpty {
+            let query = searchText.lowercased()
+            result = result.filter {
+                $0.firstName.lowercased().contains(query) ||
+                $0.lastName.lowercased().contains(query) ||
+                ($0.nickname?.lowercased().contains(query) ?? false)
+            }
+        }
+        
+        // Sortierung
         switch sortOrder {
         case .name:
-            return contacts.sorted { $0.lastName < $1.lastName }
+            result.sort { $0.lastName < $1.lastName }
         case .lastContact:
-            return contacts.sorted { ($0.lastContactDate ?? .distantPast) < ($1.lastContactDate ?? .distantPast) }
+            result.sort { ($0.lastContactDate ?? .distantPast) < ($1.lastContactDate ?? .distantPast) }
         case .urgency:
-            return contacts.sorted { $0.urgencyLevel > $1.urgencyLevel }
+            result.sort { $0.urgencyLevel > $1.urgencyLevel }
         }
+        
+        return result
     }
     
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             // Toolbar
             HStack {
                 Picker("Sortierung", selection: $sortOrder) {
@@ -37,7 +62,20 @@ struct ContactListView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 400)
                 
+                // Gruppenfilter
+                Picker("Gruppe", selection: $selectedGroupFilter) {
+                    Text("Alle Gruppen").tag(nil as ContactGroup?)
+                    ForEach(groups, id: \.id) { group in
+                        Label(group.name, systemImage: group.icon).tag(group as ContactGroup?)
+                    }
+                }
+                .frame(width: 180)
+                
                 Spacer()
+                
+                Text("\(filteredAndSortedContacts.count) Kontakte")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 
                 Button(action: { showingAddContact = true }) {
                     Label("Kontakt hinzufügen", systemImage: "plus")
@@ -45,16 +83,55 @@ struct ContactListView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding(.horizontal)
+            .padding(.vertical, 8)
             
             // Kontaktliste
-            List(sortedContacts, id: \.id, selection: $selectedContact) { contact in
-                ContactRowView(contact: contact)
-                    .tag(contact)
+            if filteredAndSortedContacts.isEmpty {
+                ContentUnavailableView(
+                    searchText.isEmpty ? "Noch keine Kontakte" : "Keine Treffer",
+                    systemImage: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass",
+                    description: Text(searchText.isEmpty
+                        ? "Füge deinen ersten Kontakt hinzu."
+                        : "Kein Kontakt passt zu \"\(searchText)\".")
+                )
+            } else {
+                List(filteredAndSortedContacts, id: \.id, selection: $selectedContact) { contact in
+                    ContactRowView(contact: contact)
+                        .tag(contact)
+                        .contextMenu {
+                            Button("Löschen", role: .destructive) {
+                                contactToDelete = contact
+                                showDeleteConfirmation = true
+                            }
+                        }
+                        .accessibilityLabel("\(contact.fullName), \(contact.isOverdue ? "überfällig" : "aktuell")")
+                }
             }
         }
         .sheet(isPresented: $showingAddContact) {
             AddContactView()
         }
+        .sheet(item: $selectedContact) { contact in
+            ContactDetailView(contact: contact)
+        }
+        .confirmationDialog(
+            "Kontakt löschen?",
+            isPresented: $showDeleteConfirmation,
+            presenting: contactToDelete
+        ) { contact in
+            Button("Löschen", role: .destructive) {
+                deleteContact(contact)
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { contact in
+            Text("\"\(contact.fullName)\" wirklich löschen? Alle Kommunikationsdaten dieses Kontakts gehen verloren.")
+        }
+    }
+    
+    @Environment(\.modelContext) private var modelContext
+    
+    private func deleteContact(_ contact: TrackedContact) {
+        modelContext.delete(contact)
     }
 }
 
@@ -64,24 +141,8 @@ struct ContactRowView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar
-            ZStack {
-                Circle()
-                    .fill(avatarColor)
-                    .frame(width: 40, height: 40)
-                
-                if let imageData = contact.profileImageData,
-                   let nsImage = NSImage(data: imageData) {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .clipShape(Circle())
-                        .frame(width: 40, height: 40)
-                } else {
-                    Text(contact.firstName.prefix(1))
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                }
-            }
+            // Avatar (nutzt wiederverwendbare Komponente)
+            ContactAvatarView(contact: contact, size: 40)
             
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
@@ -89,9 +150,7 @@ struct ContactRowView: View {
                         .fontWeight(.medium)
                     
                     if contact.isOverdue {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .font(.caption)
+                        UrgencyBadge(level: contact.urgencyLevel)
                     }
                     
                     if let days = contact.daysUntilBirthday, days <= 7 {
@@ -101,8 +160,8 @@ struct ContactRowView: View {
                 }
                 
                 HStack(spacing: 16) {
-                    if let days = contact.daysSinceLastContact {
-                        Label("vor \(days) Tagen", systemImage: "clock")
+                    if let date = contact.lastContactDate {
+                        Label(date.relativeString, systemImage: "clock")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -116,22 +175,75 @@ struct ContactRowView: View {
             }
             
             Spacer()
-            
-            // Letzte Kommunikationskanäle
-            HStack(spacing: 4) {
-                // TODO: Zeige Icons der letzten genutzten Kanäle
-            }
         }
         .padding(.vertical, 4)
     }
+}
+
+// MARK: - Contact Detail View
+struct ContactDetailView: View {
+    let contact: TrackedContact
+    @Environment(\.dismiss) private var dismiss
     
-    private var avatarColor: Color {
-        let level = contact.urgencyLevel
-        switch level {
-        case 0..<0.5: return .blue
-        case 0.5..<0.75: return .yellow
-        case 0.75..<1.0: return .orange
-        default: return .red
+    var body: some View {
+        VStack(spacing: 20) {
+            // Header
+            ContactAvatarView(contact: contact, size: 80)
+            
+            Text(contact.fullName)
+                .font(.title)
+                .fontWeight(.bold)
+            
+            if let nickname = contact.nickname {
+                Text("\"\(nickname)\"")
+                    .foregroundStyle(.secondary)
+            }
+            
+            // Stats
+            HStack(spacing: 32) {
+                statItem("Letzter Kontakt",
+                         value: contact.lastContactDate?.relativeString ?? "Nie")
+                statItem("Kommunikationen",
+                         value: "\(contact.communicationEvents.count)")
+                statItem("Gruppe",
+                         value: contact.group?.name ?? "Keine")
+            }
+            
+            Divider()
+            
+            // Kommunikationshistorie
+            if contact.communicationEvents.isEmpty {
+                Text("Noch keine Kommunikation erfasst")
+                    .foregroundStyle(.secondary)
+            } else {
+                List(contact.communicationEvents.sorted { $0.date > $1.date }.prefix(20), id: \.id) { event in
+                    HStack {
+                        Text(event.date.relativeString)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 120, alignment: .leading)
+                        Text(event.channel.rawValue)
+                            .font(.caption)
+                        Spacer()
+                        Text(event.direction == .incoming ? "↙" : "↗")
+                    }
+                }
+            }
+            
+            Button("Schließen") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding()
+        .frame(width: 500, height: 600)
+    }
+    
+    private func statItem(_ label: String, value: String) -> some View {
+        VStack {
+            Text(value)
+                .font(.headline)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -140,11 +252,13 @@ struct ContactRowView: View {
 struct AddContactView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
     
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var nickname = ""
     @State private var notes = ""
+    @State private var selectedGroup: ContactGroup?
     
     var body: some View {
         VStack(spacing: 20) {
@@ -158,6 +272,13 @@ struct AddContactView: View {
                 TextField("Spitzname (optional)", text: $nickname)
                 TextField("Notizen (optional)", text: $notes, axis: .vertical)
                     .lineLimit(3...6)
+                
+                Picker("Gruppe", selection: $selectedGroup) {
+                    Text("Keine Gruppe").tag(nil as ContactGroup?)
+                    ForEach(groups, id: \.id) { group in
+                        Label(group.name, systemImage: group.icon).tag(group as ContactGroup?)
+                    }
+                }
             }
             .formStyle(.grouped)
             
@@ -172,6 +293,7 @@ struct AddContactView: View {
                         nickname: nickname.isEmpty ? nil : nickname
                     )
                     contact.notes = notes.isEmpty ? nil : notes
+                    contact.group = selectedGroup
                     modelContext.insert(contact)
                     dismiss()
                 }
@@ -180,6 +302,6 @@ struct AddContactView: View {
             }
         }
         .padding()
-        .frame(width: 400, height: 350)
+        .frame(width: 450, height: 420)
     }
 }

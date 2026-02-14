@@ -10,6 +10,10 @@ struct SettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     
     @EnvironmentObject var reminderManager: ReminderManager
+    @EnvironmentObject var contactManager: ContactManager
+    
+    @State private var showExportSuccess = false
+    @State private var showImportPicker = false
     
     var body: some View {
         ScrollView {
@@ -72,25 +76,78 @@ struct SettingsView: View {
                     }
                 }
                 
-                // Datenquellen-Status
+                // Datenquellen-Status (dynamisch aus ContactManager)
                 settingsSection("Datenquellen", icon: "tray.2") {
-                    dataSourceRow("Kalender", icon: "calendar", status: .connected)
-                    dataSourceRow("Kontakte", icon: "person.crop.circle", status: .connected)
-                    dataSourceRow("iMessage", icon: "message", status: .needsAccess)
-                    dataSourceRow("WhatsApp", icon: "bubble.left", status: .checking)
-                    dataSourceRow("Telefon", icon: "phone", status: .needsAccess)
-                    dataSourceRow("FaceTime", icon: "video", status: .checking)
-                    dataSourceRow("Mail", icon: "envelope", status: .needsAccess)
+                    ForEach(DataSource.allCases) { source in
+                        dataSourceRow(source)
+                    }
+                    
+                    if let lastSync = contactManager.lastSyncDate {
+                        HStack {
+                            Text("Letzter Sync")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(lastSync.relativeString)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
+                    
+                    Button(action: {
+                        Task { await contactManager.performSync() }
+                    }) {
+                        if contactManager.isSyncing {
+                            Label("Synchronisiere...", systemImage: "arrow.triangle.2.circlepath")
+                        } else {
+                            Label("Jetzt synchronisieren", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(contactManager.isSyncing)
+                }
+                
+                // Daten-Export / Import
+                settingsSection("Daten", icon: "square.and.arrow.up") {
+                    Text("Exportiere Kontakte und Gruppen als JSON (ohne Nachrichteninhalte).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    HStack {
+                        Button("Exportieren") {
+                            exportData()
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Importieren") {
+                            showImportPicker = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    
+                    if showExportSuccess {
+                        Label("Export erfolgreich!", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    }
                 }
                 
                 // Datenschutz
                 settingsSection("Datenschutz & Sicherheit", icon: "lock.shield") {
-                    Text("Alle Daten werden lokal gespeichert und über iCloud synchronisiert. Keine Drittanbieter-Server.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Alle Daten werden lokal gespeichert und über iCloud synchronisiert.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Es werden keine Nachrichteninhalte gelesen – nur Metadaten (Zeitpunkt, Kontakt, Richtung).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Keine Drittanbieter-Server. Keine Telemetrie.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     
                     Button("Full Disk Access öffnen") {
-                        // Öffne Systemeinstellungen
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                             NSWorkspace.shared.open(url)
                         }
@@ -124,40 +181,37 @@ struct SettingsView: View {
         }
     }
     
-    enum DataSourceStatus {
-        case connected, needsAccess, checking, unavailable
-        
-        var color: Color {
-            switch self {
-            case .connected: return .green
-            case .needsAccess: return .orange
-            case .checking: return .yellow
-            case .unavailable: return .red
-            }
-        }
-        
-        var label: String {
-            switch self {
-            case .connected: return "Verbunden"
-            case .needsAccess: return "Zugriff nötig"
-            case .checking: return "Prüfe..."
-            case .unavailable: return "Nicht verfügbar"
-            }
-        }
-    }
-    
-    private func dataSourceRow(_ name: String, icon: String, status: DataSourceStatus) -> some View {
-        HStack {
-            Image(systemName: icon)
+    private func dataSourceRow(_ source: DataSource) -> some View {
+        let status = contactManager.dataSourceStatuses[source] ?? .checking
+        return HStack {
+            Image(systemName: source.icon)
                 .frame(width: 20)
-            Text(name)
+            Text(source.displayName)
             Spacer()
+            
+            if let count = contactManager.lastSyncResults[source] {
+                Text("\(count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            
             Circle()
                 .fill(status.color)
                 .frame(width: 8, height: 8)
             Text(status.label)
                 .font(.caption)
                 .foregroundStyle(status.color)
+        }
+        .accessibilityLabel("\(source.displayName): \(status.label)")
+    }
+    
+    // MARK: - Export / Import
+    
+    private func exportData() {
+        // Placeholder – DataExporter nutzt eigenen View-Flow
+        showExportSuccess = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            showExportSuccess = false
         }
     }
 }

@@ -11,14 +11,25 @@ struct DashboardView: View {
     @Query(sort: \ContactReminder.dueDate)
     private var upcomingReminders: [ContactReminder]
     
+    @Query(sort: \CommunicationEvent.date, order: .reverse)
+    private var recentEvents: [CommunicationEvent]
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // Sync-Fehler Banner
+                if !contactManager.syncErrors.isEmpty {
+                    syncErrorBanner
+                }
+                
                 // Header mit Sync-Status
                 headerSection
                 
                 // Überfällige Kontakte
                 overdueSection
+                
+                // Anstehende Erinnerungen
+                remindersSection
                 
                 // Anstehende Geburtstage
                 birthdaySection
@@ -31,6 +42,29 @@ struct DashboardView: View {
             }
             .padding()
         }
+    }
+    
+    // MARK: - Sync Error Banner
+    private var syncErrorBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Sync-Probleme", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            ForEach(contactManager.syncErrors) { error in
+                HStack {
+                    Image(systemName: error.source.icon)
+                        .frame(width: 16)
+                    Text(error.source.displayName)
+                        .fontWeight(.medium)
+                    Text(error.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
     // MARK: - Header
@@ -50,18 +84,25 @@ struct DashboardView: View {
             
             Spacer()
             
-            // Sync Button
+            // Sync Button mit Zustand
             Button(action: {
                 Task { await contactManager.performSync() }
             }) {
-                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+                if contactManager.isSyncing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+                }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(contactManager.isSyncing)
             
             // Status-Indikator
             Circle()
                 .fill(contactManager.isTracking ? .green : .red)
                 .frame(width: 10, height: 10)
+                .accessibilityLabel(contactManager.isTracking ? "Tracking aktiv" : "Tracking inaktiv")
         }
     }
     
@@ -106,7 +147,7 @@ struct DashboardView: View {
                 .foregroundStyle(.orange)
             
             let upcoming = overdueContacts
-                .filter { $0.daysUntilBirthday != nil && $0.daysUntilBirthday! <= 30 }
+                .filter { ($0.daysUntilBirthday ?? Int.max) <= 30 }
                 .sorted { ($0.daysUntilBirthday ?? 999) < ($1.daysUntilBirthday ?? 999) }
             
             if upcoming.isEmpty {
@@ -159,6 +200,48 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
+    // MARK: - Erinnerungen
+    private var remindersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Anstehende Erinnerungen", systemImage: "bell.fill")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.purple)
+            
+            let pending = upcomingReminders.filter { !$0.isCompleted }
+            
+            if pending.isEmpty {
+                Text("Keine offenen Erinnerungen")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(pending.prefix(5), id: \.id) { reminder in
+                    HStack {
+                        Image(systemName: "bell")
+                            .foregroundStyle(.purple)
+                        VStack(alignment: .leading) {
+                            Text(reminder.title)
+                                .fontWeight(.medium)
+                            Text(reminder.dueDate?.relativeString ?? "Kein Datum")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let due = reminder.dueDate, due < Date() {
+                            Text("Überfällig")
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                                .fontWeight(.bold)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding()
+        .background(.purple.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
     // MARK: - Letzte Aktivitäten
     private var recentActivitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -166,12 +249,47 @@ struct DashboardView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Wird nach dem ersten Sync angezeigt...")
-                .foregroundStyle(.secondary)
+            if recentEvents.isEmpty {
+                Text("Wird nach dem ersten Sync angezeigt...")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(recentEvents.prefix(10), id: \.id) { event in
+                    HStack {
+                        Image(systemName: channelIcon(event.channel))
+                            .foregroundStyle(.blue)
+                            .frame(width: 20)
+                        VStack(alignment: .leading) {
+                            Text(event.contact?.fullName ?? "Unbekannt")
+                                .fontWeight(.medium)
+                            Text(event.date.relativeString)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(event.direction == .incoming ? "Eingehend" : "Ausgehend")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
         .padding()
         .background(.gray.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func channelIcon(_ channel: CommunicationChannel) -> String {
+        switch channel {
+        case .phone: return "phone.fill"
+        case .imessage: return "message.fill"
+        case .whatsapp: return "bubble.left.fill"
+        case .email: return "envelope.fill"
+        case .facetime: return "video.fill"
+        case .calendar: return "calendar"
+        case .manual: return "pencil"
+        case .unknown: return "questionmark.circle"
+        }
     }
 }
 
@@ -225,6 +343,8 @@ struct ContactCardView: View {
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(contact.fullName), \(contact.isOverdue ? "überfällig" : "aktuell")\(contact.daysSinceLastContact.map { ", letzter Kontakt vor \($0) Tagen" } ?? "")")
     }
     
     private var urgencyColor: Color {
@@ -277,5 +397,7 @@ struct GroupCardView: View {
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.name), \(group.contacts.count) Kontakte, Intervall \(group.contactIntervalDays) Tage\(group.overdueCount > 0 ? ", \(group.overdueCount) überfällig" : "")")
     }
 }

@@ -4,7 +4,7 @@
 
 ## 🎯 Was ist CMS Family & Friends?
 
-CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikation mit wichtigen Menschen trackt. Statt manuell Einträge zu machen (wie bei Henlo), gleicht die App automatisch mit deinem Kalender, Telefon, iMessage, WhatsApp, E-Mail und FaceTime ab.
+CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikation mit wichtigen Menschen trackt. Statt manuell Einträge zu pflegen, gleicht die App automatisch mit deinem Kalender, Telefon, iMessage, WhatsApp, E-Mail und FaceTime ab.
 
 **Das Ziel:** Du wirst proaktiv erinnert, wenn der Kontakt zu jemandem zu lange ausgesetzt war – basierend auf individuellen Intervallen pro Kontaktgruppe.
 
@@ -93,7 +93,7 @@ CMSFamilyFriends/
 
 1. Repository klonen:
    ```bash
-   git clone https://github.com/AndreasDietzel/cms-family-friends.git
+   git clone <repository-url>
    ```
 
 2. In Xcode öffnen:

@@ -6,6 +6,8 @@ struct GroupListView: View {
     @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
     @Environment(\.modelContext) private var modelContext
     @State private var showingAddGroup = false
+    @State private var groupToDelete: ContactGroup?
+    @State private var showDeleteConfirmation = false
     
     var body: some View {
         VStack {
@@ -32,10 +34,28 @@ struct GroupListView: View {
             
             List(groups, id: \.id) { group in
                 GroupDetailRow(group: group)
+                    .contextMenu {
+                        Button("Löschen", role: .destructive) {
+                            groupToDelete = group
+                            showDeleteConfirmation = true
+                        }
+                    }
             }
         }
         .sheet(isPresented: $showingAddGroup) {
             AddGroupView()
+        }
+        .confirmationDialog(
+            "Gruppe löschen?",
+            isPresented: $showDeleteConfirmation,
+            presenting: groupToDelete
+        ) { group in
+            Button("Löschen", role: .destructive) {
+                modelContext.delete(group)
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { group in
+            Text("Gruppe \"\(group.name)\" mit \(group.contacts.count) Kontakt(en) wirklich löschen?")
         }
     }
     
@@ -102,12 +122,17 @@ struct AddGroupView: View {
     @State private var icon = "person.2"
     @State private var colorHex = "#007AFF"
     @State private var priority = 50
+    @State private var validationError: String?
     
     let availableIcons = [
         "house.fill", "heart.fill", "person.2.fill",
         "person.fill", "briefcase.fill", "star.fill",
         "figure.walk", "sportscourt.fill", "music.note"
     ]
+    
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && interval >= 1
+    }
     
     var body: some View {
         VStack(spacing: 20) {
@@ -135,8 +160,17 @@ struct AddGroupView: View {
                     .keyboardShortcut(.cancelAction)
                 
                 Button("Erstellen") {
+                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        validationError = "Name darf nicht leer sein"
+                        return
+                    }
+                    guard interval >= 1 else {
+                        validationError = "Intervall muss mindestens 1 Tag sein"
+                        return
+                    }
                     let group = ContactGroup(
-                        name: name,
+                        name: trimmed,
                         icon: icon,
                         colorHex: colorHex,
                         contactIntervalDays: interval,
@@ -146,7 +180,13 @@ struct AddGroupView: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(name.isEmpty)
+                .disabled(!isValid)
+            }
+            
+            if let error = validationError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .padding()

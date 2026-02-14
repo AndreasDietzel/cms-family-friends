@@ -19,11 +19,15 @@ extension Color {
 
 /// Date Extensions
 extension Date {
-    /// Relativer Zeitstring ("vor 3 Tagen", "heute", etc.)
-    var relativeString: String {
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "de_DE")
         formatter.unitsStyle = .full
-        return formatter.localizedString(for: self, relativeTo: Date())
+        return formatter
+    }()
+    
+    /// Relativer Zeitstring ("vor 3 Tagen", "heute", etc.)
+    var relativeString: String {
+        Self.relativeDateFormatter.localizedString(for: self, relativeTo: Date())
     }
 }

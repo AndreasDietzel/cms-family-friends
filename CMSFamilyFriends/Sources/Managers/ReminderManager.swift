@@ -1,6 +1,7 @@
 import Foundation
 import EventKit
 import Combine
+import os.log
 
 /// Manager für Erinnerungen (Apple Reminders Integration)
 @MainActor
@@ -11,6 +12,7 @@ class ReminderManager: ObservableObject {
     private let eventStore = EKEventStore()
     private let listName = "CMS Family & Friends"
     private var cmsReminderList: EKCalendar?
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CMSFamilyFriends", category: "Reminders")
     
     // MARK: - Authorization
     
@@ -24,7 +26,7 @@ class ReminderManager: ObservableObject {
             }
             return granted
         } catch {
-            print("❌ Reminders-Zugriff fehlgeschlagen: \(error)")
+            logger.error("Reminders-Zugriff fehlgeschlagen: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -35,14 +37,12 @@ class ReminderManager: ObservableObject {
     private func setupReminderList() async {
         let calendars = eventStore.calendars(for: .reminder)
         
-        // Prüfe ob unsere Liste bereits existiert
         if let existing = calendars.first(where: { $0.title == listName }) {
             cmsReminderList = existing
             reminderListExists = true
             return
         }
         
-        // Neue Liste erstellen
         let newList = EKCalendar(for: .reminder, eventStore: eventStore)
         newList.title = listName
         newList.source = eventStore.defaultCalendarForNewReminders()?.source
@@ -51,9 +51,9 @@ class ReminderManager: ObservableObject {
             try eventStore.saveCalendar(newList, commit: true)
             cmsReminderList = newList
             reminderListExists = true
-            print("✅ Reminders-Liste '\(listName)' erstellt")
+            logger.info("Reminders-Liste erstellt")
         } catch {
-            print("❌ Konnte Reminders-Liste nicht erstellen: \(error)")
+            logger.error("Konnte Reminders-Liste nicht erstellen: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -68,7 +68,7 @@ class ReminderManager: ObservableObject {
         priority: Int = 0
     ) async -> String? {
         guard isAuthorized, let list = cmsReminderList else {
-            print("❌ Nicht autorisiert oder keine Liste")
+            logger.warning("Nicht autorisiert oder keine Liste")
             return nil
         }
         
@@ -89,10 +89,10 @@ class ReminderManager: ObservableObject {
         
         do {
             try eventStore.save(reminder, commit: true)
-            print("✅ Erinnerung erstellt: \(title)")
+            logger.info("Erinnerung erstellt: \(title, privacy: .public)")
             return reminder.calendarItemIdentifier
         } catch {
-            print("❌ Erinnerung konnte nicht erstellt werden: \(error)")
+            logger.error("Erinnerung konnte nicht erstellt werden: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -126,7 +126,6 @@ class ReminderManager: ObservableObject {
     func createBirthdayReminder(for contact: TrackedContact) async -> String? {
         guard let birthday = contact.nextBirthday else { return nil }
         
-        // 3 Tage vorher erinnern
         let reminderDate = Calendar.current.date(byAdding: .day, value: -3, to: birthday)
         
         let title = "🎂 \(contact.fullName) hat bald Geburtstag!"
@@ -145,14 +144,13 @@ class ReminderManager: ObservableObject {
     
     /// Markiert eine Erinnerung als erledigt
     func completeReminder(identifier: String) async -> Bool {
-        guard isAuthorized else { return false }
+        guard isAuthorized, let list = cmsReminderList else { return false }
         
-        let predicate = eventStore.predicateForReminders(in: cmsReminderList != nil ? [cmsReminderList!] : nil)
+        let predicate = eventStore.predicateForReminders(in: [list])
         
         return await withCheckedContinuation { continuation in
-            eventStore.fetchReminders(matching: predicate) { [weak self] reminders in
-                guard let self = self,
-                      let reminder = reminders?.first(where: { $0.calendarItemIdentifier == identifier }) else {
+            eventStore.fetchReminders(matching: predicate) { reminders in
+                guard let reminder = reminders?.first(where: { $0.calendarItemIdentifier == identifier }) else {
                     continuation.resume(returning: false)
                     return
                 }
@@ -160,10 +158,10 @@ class ReminderManager: ObservableObject {
                 reminder.isCompleted = true
                 do {
                     try self.eventStore.save(reminder, commit: true)
-                    print("✅ Erinnerung abgehakt: \(reminder.title ?? "")")
+                    self.logger.info("Erinnerung abgehakt")
                     continuation.resume(returning: true)
                 } catch {
-                    print("❌ Fehler beim Abhaken: \(error)")
+                    self.logger.error("Fehler beim Abhaken: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(returning: false)
                 }
             }

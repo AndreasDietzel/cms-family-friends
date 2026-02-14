@@ -5,12 +5,22 @@ import SwiftData
 struct CMSFamilyFriendsApp: App {
     @StateObject private var contactManager = ContactManager()
     @StateObject private var reminderManager = ReminderManager()
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var showOnboarding = false
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(contactManager)
                 .environmentObject(reminderManager)
+                .sheet(isPresented: $showOnboarding) {
+                    OnboardingView()
+                }
+                .onAppear {
+                    if !hasCompletedOnboarding {
+                        showOnboarding = true
+                    }
+                }
         }
         .modelContainer(for: [
             TrackedContact.self,

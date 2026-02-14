@@ -5,9 +5,9 @@ import SQLite3
 /// Erfordert Full Disk Access in Systemeinstellungen
 actor MessageService {
     
+    /// Metadaten-Struct – bewusst KEIN Nachrichtentext (Datenschutz / Privacy by Design)
     struct MessageInfo {
         let rowId: Int64
-        let text: String?
         let date: Date
         let isFromMe: Bool
         let handleId: String  // Telefonnummer oder E-Mail
@@ -43,8 +43,9 @@ actor MessageService {
         let cocoaOffset: Int64 = 978307200
         let cutoffTimestamp = Int64(Date().timeIntervalSince1970 - Double(daysPast * 86400) - Double(cocoaOffset)) * 1_000_000_000
         
+        // Privacy by Design: Kein Nachrichtentext (m.text) abfragen – nur Metadaten
         let query = """
-            SELECT m.ROWID, m.text, m.date, m.is_from_me, h.id, c.display_name
+            SELECT m.ROWID, m.date, m.is_from_me, h.id, c.display_name
             FROM message m
             LEFT JOIN handle h ON m.handle_id = h.ROWID
             LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
@@ -65,17 +66,15 @@ actor MessageService {
         var messages: [MessageInfo] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             let rowId = sqlite3_column_int64(statement, 0)
-            let text = sqlite3_column_text(statement, 1).map { String(cString: $0) }
-            let dateNano = sqlite3_column_int64(statement, 2)
-            let isFromMe = sqlite3_column_int(statement, 3) == 1
-            let handleId = sqlite3_column_text(statement, 4).map { String(cString: $0) } ?? ""
-            let chatName = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+            let dateNano = sqlite3_column_int64(statement, 1)
+            let isFromMe = sqlite3_column_int(statement, 2) == 1
+            let handleId = sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? ""
+            let chatName = sqlite3_column_text(statement, 4).map { String(cString: $0) }
             
             let date = Date(timeIntervalSince1970: Double(dateNano) / 1_000_000_000 + Double(cocoaOffset))
             
             messages.append(MessageInfo(
                 rowId: rowId,
-                text: text,
                 date: date,
                 isFromMe: isFromMe,
                 handleId: handleId,
