@@ -166,12 +166,14 @@ struct GroupDetailRow: View {
 struct EditGroupView: View {
     @Bindable var group: ContactGroup
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     
     @State private var name = ""
     @State private var interval = 14
     @State private var warningDays = 3
     @State private var icon = "person.2"
     @State private var priority = 50
+    @State private var showDeleteGroupConfirmation = false
     
     let availableIcons = [
         "house.fill", "heart.fill", "person.2.fill",
@@ -226,6 +228,14 @@ struct EditGroupView: View {
                                         .fill(.red)
                                         .frame(width: 8, height: 8)
                                 }
+                                Button(action: {
+                                    contact.group = nil
+                                }) {
+                                    Image(systemName: "xmark.circle")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Aus Gruppe entfernen")
                             }
                         }
                     }
@@ -234,6 +244,13 @@ struct EditGroupView: View {
             .formStyle(.grouped)
             
             HStack {
+                Button("Gruppe löschen", role: .destructive) {
+                    showDeleteGroupConfirmation = true
+                }
+                .foregroundStyle(.red)
+                
+                Spacer()
+                
                 Button("Abbrechen") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 
@@ -252,6 +269,21 @@ struct EditGroupView: View {
         }
         .padding()
         .frame(width: 500, height: 550)
+        .confirmationDialog(
+            "Gruppe löschen?",
+            isPresented: $showDeleteGroupConfirmation
+        ) {
+            Button("Löschen", role: .destructive) {
+                for contact in group.contacts {
+                    contact.group = nil
+                }
+                modelContext.delete(group)
+                dismiss()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Gruppe \"\(group.name)\" löschen? Die \(group.contacts.count) Kontakte bleiben erhalten, verlieren aber ihre Gruppenzuordnung.")
+        }
         .onAppear {
             name = group.name
             interval = group.contactIntervalDays

@@ -67,6 +67,7 @@ enum CommunicationChannel: String, CaseIterable, Codable {
     case whatsapp = "whatsapp"
     case email = "email"
     case calendar = "calendar"      // Persönliches Treffen (Kalender-Event)
+    case reallife = "reallife"      // Real-Life Treffen (manuell per Klick)
     case manual = "manual"          // Manueller Eintrag
     case unknown = "unknown"
     
@@ -77,7 +78,8 @@ enum CommunicationChannel: String, CaseIterable, Codable {
         case .imessage: return "iMessage"
         case .whatsapp: return "WhatsApp"
         case .email: return "E-Mail"
-        case .calendar: return "Treffen"
+        case .calendar: return "Kalender-Treffen"
+        case .reallife: return "Persönliches Treffen"
         case .manual: return "Manuell"
         case .unknown: return "Unbekannt"
         }
@@ -91,6 +93,7 @@ enum CommunicationChannel: String, CaseIterable, Codable {
         case .whatsapp: return "bubble.left.fill"
         case .email: return "envelope.fill"
         case .calendar: return "calendar"
+        case .reallife: return "person.2.circle.fill"
         case .manual: return "pencil"
         case .unknown: return "questionmark.circle"
         }

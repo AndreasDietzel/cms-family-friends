@@ -51,6 +51,7 @@ final class ContactGroup {
     /// Vordefinierte Standard-Gruppen
     static let defaultGroups: [(name: String, icon: String, color: String, interval: Int, priority: Int)] = [
         ("Familie", "house.fill", "#FF3B30", 7, 100),
+        ("Verwandte", "figure.2.arms.open", "#FF6B6B", 200, 30),
         ("Enge Freunde", "heart.fill", "#FF9500", 14, 80),
         ("Freunde", "person.2.fill", "#007AFF", 30, 60),
         ("Bekannte", "person.fill", "#34C759", 90, 40),

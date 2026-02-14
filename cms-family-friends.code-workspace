@@ -1,0 +1,52 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"editor.tabSize": 4,
+		"editor.insertSpaces": true,
+		"files.exclude": {
+			"**/.DS_Store": true,
+			"**/.build": true,
+			".swiftpm": true
+		},
+		"search.exclude": {
+			"**/.build": true,
+			".swiftpm": true
+		}
+	},
+	"extensions": {
+		"recommendations": [
+			"sswg.swift-lang"
+		]
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "Build (Xcode)",
+				"type": "shell",
+				"command": "xcodebuild",
+				"args": [
+					"-scheme", "CMSFamilyFriends",
+					"-destination", "platform=macOS",
+					"build"
+				],
+				"group": {
+					"kind": "build",
+					"isDefault": true
+				},
+				"problemMatcher": []
+			},
+			{
+				"label": "Open in Xcode",
+				"type": "shell",
+				"command": "open",
+				"args": ["Package.swift"],
+				"problemMatcher": []
+			}
+		]
+	}
+}

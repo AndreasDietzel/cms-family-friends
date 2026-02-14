@@ -105,6 +105,12 @@ struct ContactListView: View {
                     ContactRowView(contact: contact)
                         .tag(contact)
                         .contextMenu {
+                            Button(action: {
+                                recordMeeting(for: contact)
+                            }) {
+                                Label("Treffen dokumentieren", systemImage: "person.2.circle.fill")
+                            }
+                            Divider()
                             Button("Löschen", role: .destructive) {
                                 contactToDelete = contact
                                 showDeleteConfirmation = true
@@ -141,6 +147,20 @@ struct ContactListView: View {
     
     private func deleteContact(_ contact: TrackedContact) {
         modelContext.delete(contact)
+    }
+    
+    /// Real-Life Treffen per Rechtsklick-Kontextmenü dokumentieren
+    private func recordMeeting(for contact: TrackedContact) {
+        let event = CommunicationEvent(
+            channel: .reallife,
+            direction: .mutual,
+            date: Date(),
+            summary: "Persönliches Treffen",
+            isAutoDetected: false
+        )
+        event.contact = contact
+        modelContext.insert(event)
+        contact.lastContactDate = Date()
     }
 }
 
@@ -204,6 +224,8 @@ struct ContactDetailView: View {
     @State private var editGroup: ContactGroup?
     @State private var useCustomInterval = false
     @State private var editCustomInterval = 14
+    @State private var showMeetingConfirmation = false
+    @State private var showDeleteConfirmation = false
     
     var body: some View {
         ScrollView {
@@ -215,6 +237,25 @@ struct ContactDetailView: View {
                     editingHeader
                 } else {
                     displayHeader
+                }
+                
+                // Quick-Action: Real-Life Treffen
+                if !isEditing {
+                    Button(action: { recordRealLifeMeeting() }) {
+                        Label("Treffen dokumentieren", systemImage: "person.2.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .controlSize(.large)
+                    .help("Persönliches Treffen jetzt dokumentieren – zählt als Kontakt")
+                }
+                
+                if showMeetingConfirmation {
+                    Label("Treffen dokumentiert ✓", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.callout)
+                        .transition(.scale.combined(with: .opacity))
                 }
                 
                 Divider()
@@ -246,6 +287,12 @@ struct ContactDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         
+                        Button("Löschen", role: .destructive) {
+                            showDeleteConfirmation = true
+                        }
+                        .buttonStyle(.bordered)
+                        .foregroundStyle(.red)
+                        
                         Button("Schließen") { dismiss() }
                             .keyboardShortcut(.cancelAction)
                     }
@@ -253,7 +300,19 @@ struct ContactDetailView: View {
             }
             .padding()
         }
-        .frame(width: 520, height: 650)
+        .frame(width: 520, height: 700)
+        .confirmationDialog(
+            "Kontakt löschen?",
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button("Löschen", role: .destructive) {
+                modelContext.delete(contact)
+                dismiss()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("\"\(contact.fullName)\" und alle zugehörigen Kommunikationsdaten wirklich löschen?")
+        }
     }
     
     // MARK: - Display Header
@@ -403,7 +462,7 @@ struct ContactDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(width: 120, alignment: .leading)
-                        Text(event.channel.rawValue)
+                        Label(event.channel.displayName, systemImage: event.channel.icon)
                             .font(.caption)
                         Spacer()
                         Text(event.direction == .incoming ? "↙" : "↗")
@@ -434,6 +493,29 @@ struct ContactDetailView: View {
         contact.group = editGroup
         contact.customContactIntervalDays = useCustomInterval ? max(1, editCustomInterval) : nil
         isEditing = false
+    }
+    
+    /// Real-Life Treffen mit einem Klick dokumentieren
+    private func recordRealLifeMeeting() {
+        let event = CommunicationEvent(
+            channel: .reallife,
+            direction: .mutual,
+            date: Date(),
+            summary: "Persönliches Treffen",
+            isAutoDetected: false
+        )
+        event.contact = contact
+        modelContext.insert(event)
+        contact.lastContactDate = Date()
+        
+        withAnimation {
+            showMeetingConfirmation = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                showMeetingConfirmation = false
+            }
+        }
     }
     
     private func statItem(_ label: String, value: String) -> some View {
