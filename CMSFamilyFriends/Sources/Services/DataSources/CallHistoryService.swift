@@ -43,7 +43,7 @@ actor CallHistoryService {
         let cutoffDate = Date().timeIntervalSince1970 - Double(daysPast * 86400) - cocoaOffset
         
         let query = """
-            SELECT ZUNIQUEID, ZADDRESS, ZDATE, ZDURATION, ZORIGINATED, ZANSWERED
+            SELECT ZUNIQUE_ID, ZADDRESS, ZDATE, ZDURATION, ZORIGINATED, ZANSWERED
             FROM ZCALLRECORD
             WHERE ZDATE > ?
             ORDER BY ZDATE DESC
