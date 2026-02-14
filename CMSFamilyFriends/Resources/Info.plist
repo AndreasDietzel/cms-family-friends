@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>CMS Family &amp; Friends</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.cmsfamilyfriends.app</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <false/>
+
+    <!-- Privacy Usage Descriptions -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>Die App benötigt Zugriff auf deinen Kalender, um Meetings und Treffen mit Kontakten zu erkennen.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Die App benötigt Zugriff auf deine Kontakte, um Namen, Telefonnummern und E-Mail-Adressen zu synchronisieren.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>Die App benötigt Zugriff auf Erinnerungen, um dich an Kontakte zu erinnern.</string>
+
+    <!-- Full Disk Access Hinweis (wird nicht vom System abgefragt, 
+         sondern manuell in Systemeinstellungen aktiviert) -->
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Die App benötigt Zugriff auf lokale Datenbanken für iMessage, WhatsApp und Anruflisten.</string>
+</dict>
+</plist>

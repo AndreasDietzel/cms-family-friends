@@ -105,12 +105,12 @@ class ContactManager: ObservableObject {
         AppLogger.syncStarted()
         
         await withTaskGroup(of: (DataSource, Result<Int, Error>).self) { group in
-            group.addTask { await (.calendar, self.syncCalendarEvents()) }
-            group.addTask { await (.contacts, self.syncContacts()) }
-            group.addTask { await (.imessage, self.syncMessages()) }
-            group.addTask { await (.phone, self.syncCallHistory()) }
-            group.addTask { await (.whatsapp, self.syncWhatsApp()) }
-            group.addTask { await (.email, self.syncMail()) }
+            group.addTask { await (.calendar, await self.withTimeout(seconds: 10) { try await self.calendarService.fetchRecentEvents().count }) }
+            group.addTask { await (.contacts, await self.withTimeout(seconds: 10) { try await self.contactsService.fetchAllContacts().count }) }
+            group.addTask { await (.imessage, await self.withTimeout(seconds: 10) { try await self.messageService.fetchRecentMessages().count }) }
+            group.addTask { await (.phone, await self.withTimeout(seconds: 10) { try await self.callHistoryService.fetchRecentCalls().count }) }
+            group.addTask { await (.whatsapp, await self.withTimeout(seconds: 10) { try await self.whatsAppService.fetchRecentMessages().count }) }
+            group.addTask { await (.email, await self.withTimeout(seconds: 10) { try await self.mailService.fetchRecentEmails().count }) }
             
             for await (source, result) in group {
                 switch result {
@@ -139,36 +139,27 @@ class ContactManager: ObservableObject {
         isSyncing = false
     }
     
-    // MARK: - Individual Syncs
+    // MARK: - Timeout Helper
     
-    private func syncCalendarEvents() async -> Result<Int, Error> {
-        do { return .success(try await calendarService.fetchRecentEvents().count) }
-        catch { return .failure(error) }
-    }
-    
-    private func syncContacts() async -> Result<Int, Error> {
-        do { return .success(try await contactsService.fetchAllContacts().count) }
-        catch { return .failure(error) }
-    }
-    
-    private func syncMessages() async -> Result<Int, Error> {
-        do { return .success(try await messageService.fetchRecentMessages().count) }
-        catch { return .failure(error) }
-    }
-    
-    private func syncCallHistory() async -> Result<Int, Error> {
-        do { return .success(try await callHistoryService.fetchRecentCalls().count) }
-        catch { return .failure(error) }
-    }
-    
-    private func syncWhatsApp() async -> Result<Int, Error> {
-        do { return .success(try await whatsAppService.fetchRecentMessages().count) }
-        catch { return .failure(error) }
-    }
-    
-    private func syncMail() async -> Result<Int, Error> {
-        do { return .success(try await mailService.fetchRecentEmails().count) }
-        catch { return .failure(error) }
+    /// Führt eine async Operation mit Timeout aus
+    private func withTimeout(seconds: Int, operation: @Sendable @escaping () async throws -> Int) async -> Result<Int, Error> {
+        do {
+            let result = try await withThrowingTaskGroup(of: Int.self) { group in
+                group.addTask {
+                    try await operation()
+                }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(seconds))
+                    throw ServiceError.notAvailable("Timeout nach \(seconds) Sekunden")
+                }
+                let first = try await group.next()!
+                group.cancelAll()
+                return first
+            }
+            return .success(result)
+        } catch {
+            return .failure(error)
+        }
     }
 }
 

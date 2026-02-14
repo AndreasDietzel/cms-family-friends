@@ -17,7 +17,23 @@ actor CalendarService {
     
     /// Berechtigung für Kalender-Zugriff anfordern
     func requestAccess() async throws -> Bool {
-        try await eventStore.requestFullAccessToEvents()
+        let status = EKEventStore.authorizationStatus(for: .event)
+        switch status {
+        case .fullAccess, .authorized:
+            return true
+        case .denied, .restricted:
+            throw ServiceError.notAuthorized(
+                "Kalender-Zugriff verweigert. Bitte unter Systemeinstellungen → Datenschutz & Sicherheit → Kalender aktivieren."
+            )
+        case .notDetermined:
+            return try await eventStore.requestFullAccessToEvents()
+        case .writeOnly:
+            throw ServiceError.notAuthorized(
+                "Nur Schreibzugriff auf Kalender. Vollzugriff erforderlich."
+            )
+        @unknown default:
+            return try await eventStore.requestFullAccessToEvents()
+        }
     }
     
     /// Letzte Events abrufen (Standard: 90 Tage)
@@ -42,7 +58,7 @@ actor CalendarService {
         
         return ekEvents.compactMap { event in
             // Nur Events mit Teilnehmern (= Meetings/Treffen)
-            let attendeeEmails = event.attendees?.compactMap { $0.url?.absoluteString
+            let attendeeEmails = event.attendees?.compactMap { $0.url.absoluteString
                 .replacingOccurrences(of: "mailto:", with: "")
             } ?? []
             

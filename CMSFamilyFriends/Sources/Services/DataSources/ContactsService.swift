@@ -18,7 +18,19 @@ actor ContactsService {
     
     /// Berechtigung für Kontakte-Zugriff anfordern
     func requestAccess() async throws -> Bool {
-        try await store.requestAccess(for: .contacts)
+        let status = CNContactStore.authorizationStatus(for: .contacts)
+        switch status {
+        case .authorized:
+            return true
+        case .denied, .restricted:
+            throw ServiceError.notAuthorized(
+                "Kontakte-Zugriff verweigert. Bitte unter Systemeinstellungen → Datenschutz & Sicherheit → Kontakte aktivieren."
+            )
+        case .notDetermined:
+            return try await store.requestAccess(for: .contacts)
+        @unknown default:
+            return try await store.requestAccess(for: .contacts)
+        }
     }
     
     /// Alle Kontakte abrufen
