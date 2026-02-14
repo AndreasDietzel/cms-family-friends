@@ -88,6 +88,11 @@ struct SettingsView: View {
                 
                 // Datenquellen-Status (dynamisch aus ContactManager)
                 settingsSection("Datenquellen", icon: "tray.2") {
+                    // Full Disk Access Warnung wenn nötig
+                    if needsFullDiskAccess {
+                        fullDiskAccessBanner
+                    }
+                    
                     ForEach(DataSource.allCases) { source in
                         dataSourceRow(source)
                     }
@@ -157,15 +162,75 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                     
-                    Button("Full Disk Access öffnen") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-                            NSWorkspace.shared.open(url)
-                        }
+                    Button(action: openFullDiskAccessSettings) {
+                        Label("Full Disk Access öffnen", systemImage: "lock.open")
                     }
                     .buttonStyle(.bordered)
                 }
             }
             .padding()
+        }
+    }
+    
+    // MARK: - Full Disk Access
+    
+    /// Prüft ob iMessage, Telefon oder Mail keinen Zugriff haben
+    private var needsFullDiskAccess: Bool {
+        let fdaSources: [DataSource] = [.imessage, .phone, .email]
+        return fdaSources.contains { source in
+            let status = contactManager.dataSourceStatuses[source]
+            switch status {
+            case .needsAccess, .unavailable:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+    
+    private var fullDiskAccessBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.title3)
+                Text("Full Disk Access erforderlich")
+                    .fontWeight(.semibold)
+            }
+            
+            Text("iMessage, Telefon und Mail lesen lokale Datenbanken. Dafür muss die App unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** zugelassen werden.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 12) {
+                Button(action: openFullDiskAccessSettings) {
+                    Label("Systemeinstellungen öffnen", systemImage: "gear")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                
+                Button(action: {
+                    Task { await contactManager.checkDataSourceAvailability() }
+                }) {
+                    Label("Erneut prüfen", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.orange.opacity(0.3), lineWidth: 1)
+        )
+    }
+    
+    private func openFullDiskAccessSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
         }
     }
     
@@ -211,6 +276,18 @@ struct SettingsView: View {
             Text(status.label)
                 .font(.caption)
                 .foregroundStyle(status.color)
+            
+            // FDA-Quellen bekommen einen Button
+            if case .needsAccess = status,
+               [.imessage, .phone, .email].contains(source) {
+                Button(action: openFullDiskAccessSettings) {
+                    Image(systemName: "arrow.right.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+                .help("Full Disk Access in Systemeinstellungen öffnen")
+            }
         }
         .accessibilityLabel("\(source.displayName): \(status.label)")
     }
