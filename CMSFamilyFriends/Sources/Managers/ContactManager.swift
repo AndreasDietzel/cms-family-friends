@@ -82,10 +82,11 @@ class ContactManager: ObservableObject {
         let callAccess = await callHistoryService.checkAccess()
         dataSourceStatuses[.phone] = callAccess ? .connected : .needsAccess
         
+        // FaceTime nutzt dieselbe DB wie Telefon
+        dataSourceStatuses[.facetime] = callAccess ? .connected : .needsAccess
+        
         let mailAccess = await mailService.checkAccess()
         dataSourceStatuses[.email] = mailAccess ? .connected : .needsAccess
-        
-        dataSourceStatuses[.facetime] = .disabled
     }
     
     // MARK: - Sync (mit Rate-Limiting & Graceful Degradation)
@@ -108,9 +109,10 @@ class ContactManager: ObservableObject {
             group.addTask { (.calendar, await self.withTimeout(seconds: 10) { try await self.calendarService.fetchRecentEvents().count }) }
             group.addTask { (.contacts, await self.withTimeout(seconds: 10) { try await self.contactsService.fetchAllContacts().count }) }
             group.addTask { (.imessage, await self.withTimeout(seconds: 10) { try await self.messageService.fetchRecentMessages().count }) }
-            group.addTask { (.phone, await self.withTimeout(seconds: 10) { try await self.callHistoryService.fetchRecentCalls().count }) }
+            group.addTask { (.phone, await self.withTimeout(seconds: 10) { try await self.callHistoryService.fetchPhoneCalls().count }) }
             group.addTask { (.whatsapp, await self.withTimeout(seconds: 10) { try await self.whatsAppService.fetchRecentMessages().count }) }
             group.addTask { (.email, await self.withTimeout(seconds: 10) { try await self.mailService.fetchRecentEmails().count }) }
+            group.addTask { (.facetime, await self.withTimeout(seconds: 10) { try await self.callHistoryService.fetchFaceTimeCalls().count }) }
             
             for await (source, result) in group {
                 switch result {

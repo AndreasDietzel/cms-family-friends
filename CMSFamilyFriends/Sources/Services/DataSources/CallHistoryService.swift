@@ -12,6 +12,7 @@ actor CallHistoryService {
         let duration: TimeInterval
         let isOutgoing: Bool
         let isAnswered: Bool
+        let isFaceTime: Bool
     }
     
     /// Pfad zur Call History DB
@@ -43,7 +44,7 @@ actor CallHistoryService {
         let cutoffDate = Date().timeIntervalSince1970 - Double(daysPast * 86400) - cocoaOffset
         
         let query = """
-            SELECT ZUNIQUE_ID, ZADDRESS, ZDATE, ZDURATION, ZORIGINATED, ZANSWERED
+            SELECT ZUNIQUE_ID, ZADDRESS, ZDATE, ZDURATION, ZORIGINATED, ZANSWERED, ZCALLTYPE
             FROM ZCALLRECORD
             WHERE ZDATE > ?
             ORDER BY ZDATE DESC
@@ -65,6 +66,9 @@ actor CallHistoryService {
             let duration = sqlite3_column_double(statement, 3)
             let originated = sqlite3_column_int(statement, 4) == 1
             let answered = sqlite3_column_int(statement, 5) == 1
+            let callType = sqlite3_column_int(statement, 6)
+            // ZCALLTYPE: 1 = Telefon, 8 = FaceTime, 16 = sonstige
+            let isFaceTime = callType == 8
             
             let date = Date(timeIntervalSinceReferenceDate: dateValue)
             
@@ -74,10 +78,21 @@ actor CallHistoryService {
                 date: date,
                 duration: duration,
                 isOutgoing: originated,
-                isAnswered: answered
+                isAnswered: answered,
+                isFaceTime: isFaceTime
             ))
         }
         
         return calls
+    }
+    
+    /// Nur Telefonanrufe (ohne FaceTime)
+    func fetchPhoneCalls(daysPast: Int = 90) async throws -> [CallRecord] {
+        try await fetchRecentCalls(daysPast: daysPast).filter { !$0.isFaceTime }
+    }
+    
+    /// Nur FaceTime-Anrufe
+    func fetchFaceTimeCalls(daysPast: Int = 90) async throws -> [CallRecord] {
+        try await fetchRecentCalls(daysPast: daysPast).filter { $0.isFaceTime }
     }
 }
