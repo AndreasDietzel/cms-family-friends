@@ -24,6 +24,31 @@ struct ContentView: View {
             }
         }
         .navigationTitle(selectedTab.title)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                AppToolbarIcon()
+            }
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    Task { await contactManager.performSync() }
+                }) {
+                    if contactManager.isSyncing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .help("Jetzt synchronisieren")
+                .disabled(contactManager.isSyncing)
+            }
+            ToolbarItem(placement: .automatic) {
+                Circle()
+                    .fill(contactManager.isTracking ? .green : .red)
+                    .frame(width: 8, height: 8)
+                    .help(contactManager.isTracking ? "Tracking aktiv" : "Tracking inaktiv")
+            }
+        }
         .onAppear {
             contactManager.modelContext = modelContext
             contactManager.startTracking()
@@ -73,6 +98,34 @@ struct SidebarView: View {
         default:
             return 0
         }
+    }
+}
+
+/// Toolbar-Icon das sich an Dark/Light Mode anpasst
+struct AppToolbarIcon: View {
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Hintergrund mit Gradient
+            RoundedRectangle(cornerRadius: 6)
+                .fill(
+                    LinearGradient(
+                        colors: colorScheme == .dark
+                            ? [Color(red: 0.3, green: 0.4, blue: 0.9), Color(red: 0.7, green: 0.3, blue: 0.8)]
+                            : [Color(red: 0.2, green: 0.3, blue: 0.8), Color(red: 0.6, green: 0.2, blue: 0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 26, height: 26)
+            
+            // Personen-Symbol
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .help("CMS Family & Friends")
     }
 }
 

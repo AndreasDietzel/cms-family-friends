@@ -1,5 +1,4 @@
 import SwiftUI
-import ServiceManagement
 
 /// Einstellungsansicht
 struct SettingsView: View {
@@ -28,10 +27,10 @@ struct SettingsView: View {
                 settingsSection("Allgemein", icon: "gear") {
                     Toggle("Beim Anmelden starten", isOn: $launchAtLogin)
                         .onChange(of: launchAtLogin) { _, newValue in
-                            setLaunchAtLogin(newValue)
+                            AppDelegate.setLaunchAtLogin(newValue)
                         }
                         .onAppear {
-                            syncLaunchAtLoginStatus()
+                            launchAtLogin = AppDelegate.isLaunchAtLoginEnabled
                         }
                     Toggle("Menüleisten-Symbol", isOn: $enableMenuBar)
                     
@@ -204,9 +203,18 @@ struct SettingsView: View {
                     .fontWeight(.semibold)
             }
             
-            Text("iMessage, Telefon und Mail lesen lokale Datenbanken. Dafür muss die App unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** zugelassen werden.")
+            Text("iMessage, Telefon und Mail lesen lokale Datenbanken. So aktivierst du Full Disk Access:")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("1. Klicke unten auf \"Systemeinstellungen öffnen\"")
+                Text("2. Klicke auf das \"＋\"-Symbol")
+                Text("3. Navigiere zur CMSFamilyFriends.app und wähle sie aus")
+                Text("4. Starte die App danach neu")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
             
             HStack(spacing: 12) {
                 Button(action: openFullDiskAccessSettings) {
@@ -308,48 +316,4 @@ struct SettingsView: View {
         }
     }
     
-    // MARK: - Launch at Login
-    
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        guard #available(macOS 13.0, *) else { return }
-        
-        if enabled {
-            let status = SMAppService.mainApp.status
-            switch status {
-            case .enabled:
-                return // Bereits registriert
-            case .requiresApproval:
-                // User muss in Systemeinstellungen genehmigen
-                SMAppService.openSystemSettingsLoginItems()
-                return
-            default:
-                break
-            }
-            do {
-                try SMAppService.mainApp.register()
-            } catch {
-                AppLogger.accessDenied(resource: "Launch at Login: \(error.localizedDescription)")
-                // Nicht sofort zurücksetzen – kurz verzögern damit SwiftUI nicht in Loop gerät
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    launchAtLogin = false
-                }
-            }
-        } else {
-            do {
-                try SMAppService.mainApp.unregister()
-            } catch {
-                AppLogger.accessDenied(resource: "Launch at Login deaktivieren: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    /// Login-Status von SMAppService synchronisieren
-    private func syncLaunchAtLoginStatus() {
-        guard #available(macOS 13.0, *) else { return }
-        let status = SMAppService.mainApp.status
-        let isRegistered = (status == .enabled)
-        if launchAtLogin != isRegistered {
-            launchAtLogin = isRegistered
-        }
-    }
 }

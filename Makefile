@@ -36,8 +36,14 @@ app: release
 	@echo '<key>CFBundleVersion</key><string>1</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '<key>LSMinimumSystemVersion</key><string>14.0</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '<key>NSHighResolutionCapable</key><true/>' >> "CMSFamilyFriends.app/Contents/Info.plist"
+	@echo '<key>NSCalendarsUsageDescription</key><string>CMS Family and Friends needs calendar access to detect meetings with your contacts.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
+	@echo '<key>NSContactsUsageDescription</key><string>CMS Family and Friends needs access to your contacts to sync names, phone numbers and email addresses.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
+	@echo '<key>NSRemindersUsageDescription</key><string>CMS Family and Friends needs reminders access to notify you about contacts.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
+	@echo '<key>NSDesktopFolderUsageDescription</key><string>CMS Family and Friends needs access to local databases for iMessage, WhatsApp and call history.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '</dict></plist>' >> "CMSFamilyFriends.app/Contents/Info.plist"
-	@echo "✓ CMSFamilyFriends.app created. Open with: open CMSFamilyFriends.app"
+	@# Ad-hoc code signing with stable identifier (required for macOS TCC/FDA)
+	@codesign --force --deep -s - --identifier com.cmsfamilyfriends.app "CMSFamilyFriends.app"
+	@echo "✓ CMSFamilyFriends.app created and signed. Open with: open CMSFamilyFriends.app"
 
 # Install to /Applications
 install: app

@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import Contacts
+import EventKit
 
 /// Vereinfachtes Onboarding – 3 Schritte statt 6
 struct OnboardingView: View {
@@ -11,6 +13,9 @@ struct OnboardingView: View {
     
     @State private var currentStep = 0
     @State private var createDefaultGroups = true
+    @State private var contactsGranted = false
+    @State private var calendarGranted = false
+    @State private var remindersGranted = false
     
     private let steps: [(title: String, description: String, icon: String)] = [
         (
@@ -62,15 +67,93 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
             
-            // Berechtigungen-Schritt: FDA-Button
+            // Berechtigungen-Schritt: Einzelne Berechtigung anfordern
             if currentStep == 1 {
-                Button("Full Disk Access öffnen") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-                        NSWorkspace.shared.open(url)
+                VStack(spacing: 10) {
+                    HStack {
+                        Image(systemName: contactsGranted ? "checkmark.circle.fill" : "person.crop.circle")
+                            .foregroundStyle(contactsGranted ? .green : .secondary)
+                        Text("Kontakte")
+                        Spacer()
+                        if contactsGranted {
+                            Text("Erlaubt").foregroundStyle(.green).font(.caption)
+                        } else {
+                            Button("Erlauben") {
+                                Task {
+                                    let store = CNContactStore()
+                                    contactsGranted = (try? await store.requestAccess(for: .contacts)) ?? false
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
                     }
+                    
+                    HStack {
+                        Image(systemName: calendarGranted ? "checkmark.circle.fill" : "calendar")
+                            .foregroundStyle(calendarGranted ? .green : .secondary)
+                        Text("Kalender")
+                        Spacer()
+                        if calendarGranted {
+                            Text("Erlaubt").foregroundStyle(.green).font(.caption)
+                        } else {
+                            Button("Erlauben") {
+                                Task {
+                                    let store = EKEventStore()
+                                    calendarGranted = (try? await store.requestFullAccessToEvents()) ?? false
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    }
+                    
+                    HStack {
+                        Image(systemName: remindersGranted ? "checkmark.circle.fill" : "bell")
+                            .foregroundStyle(remindersGranted ? .green : .secondary)
+                        Text("Erinnerungen")
+                        Spacer()
+                        if remindersGranted {
+                            Text("Erlaubt").foregroundStyle(.green).font(.caption)
+                        } else {
+                            Button("Erlauben") {
+                                Task {
+                                    let store = EKEventStore()
+                                    remindersGranted = (try? await store.requestFullAccessToReminders()) ?? false
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    HStack {
+                        Image(systemName: "externaldrive.fill")
+                            .foregroundStyle(.secondary)
+                        Text("Full Disk Access")
+                        Spacer()
+                        Button("Öffnen") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    
+                    Text("Für iMessage, WhatsApp & Anrufliste")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .frame(maxWidth: 350)
+                .onAppear {
+                    // Aktuellen Status prüfen
+                    contactsGranted = CNContactStore.authorizationStatus(for: .contacts) == .authorized
+                    calendarGranted = EKEventStore.authorizationStatus(for: .event) == .fullAccess
+                    remindersGranted = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+                }
             }
             
             // Letzter Schritt: Standard-Gruppen
