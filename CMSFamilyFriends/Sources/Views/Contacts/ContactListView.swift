@@ -5,7 +5,7 @@ import SwiftData
 struct ContactListView: View {
     @Query(sort: \TrackedContact.lastName) private var contacts: [TrackedContact]
     @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
-    @Binding var searchText: String
+    @State private var searchText = ""
     @State private var showingAddContact = false
     @State private var showingImportContacts = false
     @State private var selectedContact: TrackedContact?
@@ -53,6 +53,26 @@ struct ContactListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // Suchleiste
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Kontakte durchsuchen...", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+            .background(.quaternary.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal)
+            .padding(.top, 8)
+            
             // Toolbar
             HStack {
                 Picker("Sortierung", selection: $sortOrder) {

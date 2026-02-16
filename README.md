@@ -1,5 +1,20 @@
 # CMS Family & Friends
 
+```
+     _____ __  __ ____
+    / ____|  \/  / ___|
+   | |    | \  / \___ \    _____ _   _ _ _  _ _  _   ___
+   | |    | |\/| |___) |  |  ___| \ | |_  )(_) || | / __|
+   | |____| |  | |____/   | |_  |  \| | / /  \ || | \__ \
+    \_____|_|  |_|         |_|   |_|\__|/___|  \__/  |___/
+                 .__     .        .
+                 |__  _ *|  _  _  _| _
+                 |  |(_< | (/_(/_(_|_>
+   ──────────────────────────────────────────────────────
+   Stay connected to the people who matter.    macOS 14+
+   ──────────────────────────────────────────────────────
+```
+
 **Automatic contact tracking for macOS** – Stay in touch with the people who matter, without manually logging anything.
 
 ## What is CMS Family & Friends?
@@ -91,27 +106,43 @@ CMSFamilyFriends/
 ## Requirements
 
 - macOS 14 (Sonoma) or later
-- Xcode 15+
+- Swift toolchain (via Xcode or standalone Swift installation)
 - Full Disk Access (required for iMessage, WhatsApp, Phone/FaceTime call history, Mail)
 - Calendar and Contacts permissions
 
 ## Getting Started
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/AndreasDietzel/cms-family-friends.git
-   ```
+### Option A: Build & Run without Xcode
 
-2. Open in Xcode:
-   ```bash
-   open Package.swift
-   ```
+```bash
+git clone https://github.com/AndreasDietzel/cms-family-friends.git
+cd cms-family-friends
 
-3. Build & Run (`Cmd+R`)
+# Build and run directly
+make run
 
-4. Grant permissions:
-   - **Calendar & Contacts** – the app will prompt automatically
-   - **Full Disk Access** – enable manually in System Settings → Privacy & Security → Full Disk Access
+# Or create a proper .app bundle
+make app
+open CMSFamilyFriends.app
+
+# Install to /Applications
+make install
+```
+
+### Option B: Open in Xcode
+
+```bash
+git clone https://github.com/AndreasDietzel/cms-family-friends.git
+cd cms-family-friends
+open Package.swift
+# Build & Run (Cmd+R)
+```
+
+### Permissions Setup
+
+1. **Calendar & Contacts** – the app will prompt automatically on first launch
+2. **Full Disk Access** – enable manually in System Settings → Privacy & Security → Full Disk Access
+3. **Reminders** – optional, for Apple Reminders integration
 
 ## Roadmap
 
@@ -133,6 +164,12 @@ CMSFamilyFriends/
 - [x] Real-life meeting tracking
 - [x] Contact import from macOS Contacts
 - [x] Batch group assignment
+- [x] Persistent data storage (SwiftData)
+- [x] Working search bar
+- [x] Editable settings with live effect
+- [x] Standalone build without Xcode (Makefile)
+- [x] Group creation & default groups in onboarding
+- [x] Future-date bug fix for last contact display
 
 ### Phase 2
 - [ ] iCloud Sync

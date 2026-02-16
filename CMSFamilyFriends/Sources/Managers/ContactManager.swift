@@ -71,6 +71,18 @@ class ContactManager: ObservableObject {
         syncTimer = nil
     }
     
+    /// Sync-Timer mit neuem Intervall neu starten (z.B. nach Settings-Änderung)
+    func updateSyncInterval() {
+        guard isTracking else { return }
+        syncTimer?.invalidate()
+        let interval = max(syncIntervalMinutes, 15) * 60
+        syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.performSync()
+            }
+        }
+    }
+    
     // MARK: - Data Source Availability Check
     
     func checkDataSourceAvailability() async {
@@ -240,14 +252,14 @@ class ContactManager: ObservableObject {
         // 2. Lookup-Tabelle aufbauen (Phone/Email/Name → TrackedContact)
         let lookups = await buildLookups(trackedContacts: trackedContacts)
         
-        // 2a. Bereinigung: Email-Events mit fehlerhaften Daten löschen (z.B. in der Zukunft)
-        //     Entstanden durch früheren Bug bei der Datumsberechnung
+        // 2a. Bereinigung: ALLE Events mit Datum in der Zukunft löschen
+        //     Verhindert fehlerhafte "letzter Kontakt" Anzeige
         do {
             let now = Date()
             let allEvents = try modelContext.fetch(FetchDescriptor<CommunicationEvent>())
-            let badEvents = allEvents.filter { $0.channelRawValue == "email" && $0.date > now }
+            let badEvents = allEvents.filter { $0.date > now }
             if !badEvents.isEmpty {
-                AppLogger.contactOperation("Email-Bereinigung (fehlerhaftes Datum)", count: badEvents.count)
+                AppLogger.contactOperation("Bereinigung (Datum in der Zukunft)", count: badEvents.count)
                 for event in badEvents {
                     modelContext.delete(event)
                 }
@@ -431,6 +443,8 @@ class ContactManager: ObservableObject {
             var count = 0
             
             for calEvent in events {
+                // Nur vergangene Kalender-Events zählen als "Kontakt"
+                guard calEvent.startDate <= Date() else { continue }
                 let sourceId = "cal-\(calEvent.identifier)"
                 guard !existingIds.contains(sourceId) else { continue }
                 
@@ -482,6 +496,8 @@ class ContactManager: ObservableObject {
     // MARK: - Helpers
     
     private func updateLatestDate(_ dates: inout [UUID: Date], contactId: UUID, date: Date) {
+        // Niemals zukünftige Daten als "letzten Kontakt" speichern
+        guard date <= Date() else { return }
         if let existing = dates[contactId] {
             if date > existing { dates[contactId] = date }
         } else {

@@ -16,6 +16,25 @@ struct CMSFamilyFriendsApp: App {
     
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CMSFamilyFriends", category: "App")
     
+    /// Expliziter Store-Pfad für zuverlässige Persistenz (auch ohne Xcode/App-Bundle)
+    private static let sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            TrackedContact.self,
+            ContactGroup.self,
+            CommunicationEvent.self,
+            ContactReminder.self
+        ])
+        let appSupport = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/CMSFamilyFriends")
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        let config = ModelConfiguration(
+            "CMSFamilyFriends",
+            schema: schema,
+            url: appSupport.appendingPathComponent("CMSFamilyFriends.store")
+        )
+        return try! ModelContainer(for: schema, configurations: [config])
+    }()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -40,12 +59,7 @@ struct CMSFamilyFriendsApp: App {
                     appDelegate.keepInDock = newValue
                 }
         }
-        .modelContainer(for: [
-            TrackedContact.self,
-            ContactGroup.self,
-            CommunicationEvent.self,
-            ContactReminder.self
-        ])
+        .modelContainer(Self.sharedModelContainer)
         .windowStyle(.titleBar)
         .defaultSize(width: 1000, height: 700)
         

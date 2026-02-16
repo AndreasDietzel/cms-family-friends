@@ -5,7 +5,6 @@ struct ContentView: View {
     @EnvironmentObject var contactManager: ContactManager
     @Environment(\.modelContext) private var modelContext
     @State private var selectedTab: SidebarTab = .dashboard
-    @State private var searchText = ""
     
     var body: some View {
         NavigationSplitView {
@@ -15,7 +14,7 @@ struct ContentView: View {
             case .dashboard:
                 DashboardView()
             case .contacts:
-                ContactListView(searchText: $searchText)
+                ContactListView()
             case .groups:
                 GroupListView()
             case .reminders:
@@ -24,7 +23,6 @@ struct ContentView: View {
                 SettingsView()
             }
         }
-        .searchable(text: $searchText, prompt: "Kontakte durchsuchen...")
         .navigationTitle(selectedTab.title)
         .onAppear {
             contactManager.modelContext = modelContext

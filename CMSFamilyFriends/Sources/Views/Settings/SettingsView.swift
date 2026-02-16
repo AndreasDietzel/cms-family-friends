@@ -50,6 +50,9 @@ struct SettingsView: View {
                             Text("2 Stunden").tag(120)
                         }
                         .frame(width: 200)
+                        .onChange(of: syncInterval) { _, _ in
+                            contactManager.updateSyncInterval()
+                        }
                     }
                 }
                 

@@ -107,6 +107,7 @@ struct GroupListView: View {
             )
             modelContext.insert(group)
         }
+        try? modelContext.save()
     }
 }
 
@@ -371,6 +372,7 @@ struct AddGroupView: View {
                         priority: priority
                     )
                     modelContext.insert(group)
+                    try? modelContext.save()
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

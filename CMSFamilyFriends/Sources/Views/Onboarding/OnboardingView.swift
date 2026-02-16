@@ -1,10 +1,12 @@
 import SwiftUI
+import SwiftData
 
 /// Vereinfachtes Onboarding – 3 Schritte statt 6
 struct OnboardingView: View {
     @EnvironmentObject var contactManager: ContactManager
     @EnvironmentObject var reminderManager: ReminderManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     @State private var currentStep = 0
@@ -99,6 +101,19 @@ struct OnboardingView: View {
                     .keyboardShortcut(.rightArrow, modifiers: [])
                 } else {
                     Button("Los geht's!") {
+                        if createDefaultGroups {
+                            for defaults in ContactGroup.defaultGroups {
+                                let group = ContactGroup(
+                                    name: defaults.name,
+                                    icon: defaults.icon,
+                                    colorHex: defaults.color,
+                                    contactIntervalDays: defaults.interval,
+                                    priority: defaults.priority
+                                )
+                                modelContext.insert(group)
+                            }
+                            try? modelContext.save()
+                        }
                         hasCompletedOnboarding = true
                         dismiss()
                     }
