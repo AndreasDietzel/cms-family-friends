@@ -115,6 +115,7 @@ class ContactManager: ObservableObject {
         
         let messageAccess = await messageService.checkAccess()
         dataSourceStatuses[.imessage] = messageAccess ? .connected : .needsAccess
+        AppLogger.log("iMessage access: \(messageAccess)")
         
         let whatsAppAccess = await whatsAppService.checkAccess()
         dataSourceStatuses[.whatsapp] = whatsAppAccess ? .connected : .unavailable(reason: "Nicht installiert")
@@ -122,9 +123,12 @@ class ContactManager: ObservableObject {
         let callAccess = await callHistoryService.checkAccess()
         dataSourceStatuses[.phone] = callAccess ? .connected : .needsAccess
         dataSourceStatuses[.facetime] = callAccess ? .connected : .needsAccess
+        AppLogger.log("CallHistory access: \(callAccess)")
         
         let mailAccess = await mailService.checkAccess()
         dataSourceStatuses[.email] = mailAccess ? .connected : .needsAccess
+        AppLogger.log("Mail access: \(mailAccess)")
+        AppLogger.log("Bundle: \(Bundle.main.bundleIdentifier ?? "nil"), Path: \(Bundle.main.bundlePath)")
     }
     
     // MARK: - Contact Lookup

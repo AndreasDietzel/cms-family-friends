@@ -20,9 +20,16 @@ actor MessageService {
         return "\(home)/Library/Messages/chat.db"
     }
     
-    /// Prüft ob Zugriff auf chat.db möglich ist
+    /// Prüft ob Zugriff auf chat.db möglich ist (versucht die DB tatsächlich zu öffnen)
     func checkAccess() -> Bool {
-        FileManager.default.isReadableFile(atPath: chatDBPath)
+        let path = chatDBPath
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        
+        // Tatsächlichen SQLite-Zugriff testen (FileManager.isReadableFile ist bei TCC unzuverlässig)
+        var db: OpaquePointer?
+        let result = sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil)
+        defer { sqlite3_close(db) }
+        return result == SQLITE_OK
     }
     
     /// Letzte Nachrichten abrufen

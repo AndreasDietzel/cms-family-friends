@@ -31,9 +31,15 @@ actor MailService {
         return possiblePaths.first { FileManager.default.fileExists(atPath: $0) }
     }
     
-    /// Prüft ob Zugriff möglich ist
+    /// Prüft ob Zugriff möglich ist (versucht die DB tatsächlich zu öffnen)
     func checkAccess() -> Bool {
-        mailDBPath != nil
+        guard let path = mailDBPath else { return false }
+        
+        // Tatsächlichen SQLite-Zugriff testen
+        var db: OpaquePointer?
+        let result = sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil)
+        defer { sqlite3_close(db) }
+        return result == SQLITE_OK
     }
     
     /// Eigene E-Mail-Adressen aus Mail-Accounts laden

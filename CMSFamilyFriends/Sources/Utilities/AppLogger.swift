@@ -12,6 +12,11 @@ enum AppLogger {
     
     // MARK: - Sync Events
     
+    /// Generisches Info-Log
+    static func log(_ message: String) {
+        syncLogger.info("\(message, privacy: .public)")
+    }
+    
     /// Loggt einen erfolgreichen Sync-Vorgang
     static func syncCompleted(source: DataSource, itemCount: Int) {
         syncLogger.info("Sync abgeschlossen: \(source.displayName, privacy: .public) – \(itemCount) Einträge")
