@@ -4,6 +4,7 @@ import SwiftData
 struct ContentView: View {
     @EnvironmentObject var contactManager: ContactManager
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("toolbarIconStyle") private var toolbarIconStyle = "blackGray"
     @State private var selectedTab: SidebarTab = .dashboard
     
     var body: some View {
@@ -27,6 +28,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 AppToolbarIcon()
+                    .id(toolbarIconStyle)
             }
             ToolbarItem(placement: .automatic) {
                 Button(action: {
