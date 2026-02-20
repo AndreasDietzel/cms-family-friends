@@ -122,6 +122,30 @@ enum ToolbarIconStyle: String, CaseIterable, Identifiable {
         case .minimal: return "Minimal"
         }
     }
+    
+    /// SF Symbol für die Menüleiste passend zum Stil
+    var menuBarSymbol: String {
+        switch self {
+        case .blackGray: return "person.2.fill"
+        case .gradient: return "person.2.circle.fill"
+        case .monochrome: return "person.2"
+        case .colorful: return "person.2.circle.fill"
+        case .minimal: return "person.2"
+        }
+    }
+}
+
+/// Menüleisten-Icon (SF Symbol) das sich per Einstellung anpasst
+struct MenuBarIcon: View {
+    var styleName: String
+    
+    private var activeStyle: ToolbarIconStyle {
+        ToolbarIconStyle(rawValue: styleName) ?? .blackGray
+    }
+    
+    var body: some View {
+        Image(systemName: activeStyle.menuBarSymbol)
+    }
 }
 
 /// Toolbar-Icon das sich per Einstellung anpassen lässt

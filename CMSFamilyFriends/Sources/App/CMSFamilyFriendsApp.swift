@@ -9,6 +9,7 @@ struct CMSFamilyFriendsApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("keepInDock") private var keepInDock = true
     @AppStorage("enableMenuBar") private var enableMenuBar = true
+    @AppStorage("toolbarIconStyle") private var toolbarIconStyle = "blackGray"
     @State private var showOnboarding = false
     
     /// AppDelegate für Dock-Verhalten (Fenster schließen ohne App zu beenden)
@@ -64,9 +65,11 @@ struct CMSFamilyFriendsApp: App {
         .defaultSize(width: 1000, height: 700)
         
         // Menubar Extra für schnellen Zugriff
-        MenuBarExtra("CMS Family & Friends", systemImage: "person.2.circle.fill", isInserted: $enableMenuBar) {
+        MenuBarExtra(isInserted: $enableMenuBar) {
             MenuBarView()
                 .environmentObject(contactManager)
+        } label: {
+            MenuBarIcon(styleName: toolbarIconStyle)
         }
         .menuBarExtraStyle(.window)
     }
