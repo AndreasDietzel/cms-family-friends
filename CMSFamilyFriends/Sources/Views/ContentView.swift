@@ -101,29 +101,19 @@ struct SidebarView: View {
     }
 }
 
-/// Toolbar-Icon das sich an Dark/Light Mode anpasst
+/// Toolbar-Icon mit schwarzem Hintergrund und grauem Symbol
 struct AppToolbarIcon: View {
-    @Environment(\.colorScheme) private var colorScheme
-    
     var body: some View {
         ZStack {
-            // Hintergrund mit Gradient
+            // Schwarzer Hintergrund
             RoundedRectangle(cornerRadius: 6)
-                .fill(
-                    LinearGradient(
-                        colors: colorScheme == .dark
-                            ? [Color(red: 0.3, green: 0.4, blue: 0.9), Color(red: 0.7, green: 0.3, blue: 0.8)]
-                            : [Color(red: 0.2, green: 0.3, blue: 0.8), Color(red: 0.6, green: 0.2, blue: 0.7)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(Color.black)
                 .frame(width: 26, height: 26)
             
-            // Personen-Symbol
+            // Graues Personen-Symbol
             Image(systemName: "person.2.fill")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.gray)
         }
         .help("CMS Family & Friends")
     }

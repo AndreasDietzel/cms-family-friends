@@ -79,16 +79,16 @@ final class TrackedContact {
     var nextBirthday: Date? {
         guard let birthday = birthday else { return nil }
         let calendar = Calendar.current
-        let today = Date()
+        let todayStart = calendar.startOfDay(for: Date())
         var components = calendar.dateComponents([.month, .day], from: birthday)
-        components.year = calendar.component(.year, from: today)
+        components.year = calendar.component(.year, from: todayStart)
         
         guard let thisYearBirthday = calendar.date(from: components) else { return nil }
         
-        if thisYearBirthday >= today {
+        if thisYearBirthday >= todayStart {
             return thisYearBirthday
         } else {
-            components.year = calendar.component(.year, from: today) + 1
+            components.year = calendar.component(.year, from: todayStart) + 1
             return calendar.date(from: components)
         }
     }
@@ -96,7 +96,8 @@ final class TrackedContact {
     /// Tage bis zum nächsten Geburtstag
     var daysUntilBirthday: Int? {
         guard let next = nextBirthday else { return nil }
-        return Calendar.current.dateComponents([.day], from: Date(), to: next).day
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        return Calendar.current.dateComponents([.day], from: todayStart, to: next).day
     }
     
     init(
