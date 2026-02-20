@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("enableMenuBar") private var enableMenuBar = true
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("keepInDock") private var keepInDock = true
+    @AppStorage("toolbarIconStyle") private var toolbarIconStyle = "blackGray"
     
     @EnvironmentObject var reminderManager: ReminderManager
     @EnvironmentObject var contactManager: ContactManager
@@ -38,6 +39,38 @@ struct SettingsView: View {
                     Text("Wenn aktiviert, läuft die App im Hintergrund weiter, auch wenn das Fenster geschlossen wird. Das Symbol bleibt im Dock sichtbar.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    
+                    Divider()
+                    
+                    // Toolbar-Icon Auswahl
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Toolbar-Symbol")
+                            .fontWeight(.medium)
+                        
+                        HStack(spacing: 12) {
+                            ForEach(ToolbarIconStyle.allCases) { style in
+                                Button(action: { toolbarIconStyle = style.rawValue }) {
+                                    VStack(spacing: 6) {
+                                        AppToolbarIcon(style: style)
+                                        Text(style.label)
+                                            .font(.caption2)
+                                    }
+                                    .padding(8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(toolbarIconStyle == style.rawValue ? Color.accentColor.opacity(0.15) : Color.clear)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(toolbarIconStyle == style.rawValue ? Color.accentColor : Color.clear, lineWidth: 2)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    
+                    Divider()
                     
                     HStack {
                         Text("Sync-Intervall")

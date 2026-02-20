@@ -101,21 +101,97 @@ struct SidebarView: View {
     }
 }
 
-/// Toolbar-Icon mit schwarzem Hintergrund und grauem Symbol
+/// Verfügbare Toolbar-Icon-Stile
+enum ToolbarIconStyle: String, CaseIterable, Identifiable {
+    case blackGray = "blackGray"
+    case gradient = "gradient"
+    case monochrome = "monochrome"
+    case colorful = "colorful"
+    case minimal = "minimal"
+    
+    var id: String { rawValue }
+    
+    var label: String {
+        switch self {
+        case .blackGray: return "Schwarz"
+        case .gradient: return "Gradient"
+        case .monochrome: return "Mono"
+        case .colorful: return "Bunt"
+        case .minimal: return "Minimal"
+        }
+    }
+}
+
+/// Toolbar-Icon das sich per Einstellung anpassen lässt
 struct AppToolbarIcon: View {
+    @AppStorage("toolbarIconStyle") private var selectedStyle = "blackGray"
+    var style: ToolbarIconStyle? = nil
+    
+    private var activeStyle: ToolbarIconStyle {
+        style ?? (ToolbarIconStyle(rawValue: selectedStyle) ?? .blackGray)
+    }
+    
     var body: some View {
         ZStack {
-            // Schwarzer Hintergrund
+            background
+            symbol
+        }
+        .frame(width: 26, height: 26)
+        .help("CMS Family & Friends")
+    }
+    
+    @ViewBuilder
+    private var background: some View {
+        switch activeStyle {
+        case .blackGray:
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.black)
-                .frame(width: 26, height: 26)
-            
-            // Graues Personen-Symbol
+        case .gradient:
+            RoundedRectangle(cornerRadius: 6)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.2, green: 0.3, blue: 0.8), Color(red: 0.6, green: 0.2, blue: 0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        case .monochrome:
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.2))
+        case .colorful:
+            RoundedRectangle(cornerRadius: 6)
+                .fill(
+                    LinearGradient(
+                        colors: [.orange, .pink, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        case .minimal:
+            Color.clear
+        }
+    }
+    
+    @ViewBuilder
+    private var symbol: some View {
+        switch activeStyle {
+        case .blackGray:
             Image(systemName: "person.2.fill")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.gray)
+        case .gradient, .colorful:
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+        case .monochrome:
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+        case .minimal:
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
-        .help("CMS Family & Friends")
     }
 }
 
