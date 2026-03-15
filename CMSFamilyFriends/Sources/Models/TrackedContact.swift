@@ -23,10 +23,6 @@ final class TrackedContact {
     @Relationship(deleteRule: .cascade)
     var communicationEvents: [CommunicationEvent]
     
-    /// Aktive Erinnerungen
-    @Relationship(deleteRule: .cascade)
-    var reminders: [ContactReminder]
-    
     /// Profilbild-Daten (optional)
     var profileImageData: Data?
     
@@ -79,16 +75,16 @@ final class TrackedContact {
     var nextBirthday: Date? {
         guard let birthday = birthday else { return nil }
         let calendar = Calendar.current
-        let todayStart = calendar.startOfDay(for: Date())
+        let today = Date()
         var components = calendar.dateComponents([.month, .day], from: birthday)
-        components.year = calendar.component(.year, from: todayStart)
+        components.year = calendar.component(.year, from: today)
         
         guard let thisYearBirthday = calendar.date(from: components) else { return nil }
         
-        if thisYearBirthday >= todayStart {
+        if thisYearBirthday >= today {
             return thisYearBirthday
         } else {
-            components.year = calendar.component(.year, from: todayStart) + 1
+            components.year = calendar.component(.year, from: today) + 1
             return calendar.date(from: components)
         }
     }
@@ -96,8 +92,7 @@ final class TrackedContact {
     /// Tage bis zum nächsten Geburtstag
     var daysUntilBirthday: Int? {
         guard let next = nextBirthday else { return nil }
-        let todayStart = Calendar.current.startOfDay(for: Date())
-        return Calendar.current.dateComponents([.day], from: todayStart, to: next).day
+        return Calendar.current.dateComponents([.day], from: Date(), to: next).day
     }
     
     init(
@@ -114,7 +109,6 @@ final class TrackedContact {
         self.appleContactIdentifier = appleContactIdentifier
         self.birthday = birthday
         self.communicationEvents = []
-        self.reminders = []
         self.createdAt = Date()
         self.isActive = true
     }

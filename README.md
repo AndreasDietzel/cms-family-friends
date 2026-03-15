@@ -42,13 +42,6 @@ CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikat
 - **Dynamische Kontaktpausen-Warnungen** basierend auf Gruppenkonfiguration
 - **Urgency-Level** – visuelle Anzeige der Dringlichkeit
 
-### Erinnerungen (Apple Reminders Integration)
-- Eigene Reminders-Liste "CMS Family & Friends"
-- Automatische Erinnerung bei Kontaktpause
-- Priorität basierend auf Kontakt-Wichtigkeit
-- Snooze/Verzögern von Erinnerungen
-- Auto-Abhaken nach erfolgreicher Kontaktaufnahme
-
 ### UI
 - Native macOS SwiftUI App
 - Dashboard mit Übersicht
@@ -69,13 +62,12 @@ CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikat
  │  Models  │  TrackedContact ─ Kontakt + Tracking-Metadaten   │
  │          │  ContactGroup ──── Gruppen mit Intervallen       │
  │          │  CommunicationEvent  Kommunikations-Events       │
- │          │  ContactReminder ── Erinnerungen (Reminders)     │
  │          │                                                  │
  ├──────────┼──────────────────────────────────────────────────┤
  │          │                                                  │
  │  Views   │  Dashboard ──── Hauptübersicht                   │
  │          │  Contacts ───── Kontakt- & Gruppenlisten         │
- │          │  Settings ───── Einstellungen & Reminders        │
+ │          │  Settings ───── Einstellungen                    │
  │          │  Components ─── Wiederverwendbare UI-Bausteine   │
  │          │                                                  │
  ├──────────┼──────────────────────────────────────────────────┤
@@ -85,7 +77,6 @@ CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikat
  ├──────────┼──────────────────────────────────────────────────┤
  │          │                                                  │
  │ Managers │  ContactManager ── Zentraler Sync-Manager        │
- │          │  ReminderManager ─ Apple Reminders Integration   │
  │          │                                                  │
  ├──────────┼──────────────────────────────────────────────────┤
  │          │                                                  │
@@ -142,7 +133,6 @@ CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikat
 - [x] WhatsApp-Tracking
 - [x] Telefon-History
 - [x] Mail-Tracking
-- [x] Reminders-Integration
 - [x] Dashboard UI
 - [x] Kontaktgruppen mit Intervallen
 - [x] Geburtstags-Erinnerungen

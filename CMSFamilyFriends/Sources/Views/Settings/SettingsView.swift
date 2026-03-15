@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 /// Einstellungsansicht
 struct SettingsView: View {
@@ -9,9 +10,7 @@ struct SettingsView: View {
     @AppStorage("enableMenuBar") private var enableMenuBar = true
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("keepInDock") private var keepInDock = true
-    @AppStorage("toolbarIconStyle") private var toolbarIconStyle = "blackGray"
     
-    @EnvironmentObject var reminderManager: ReminderManager
     @EnvironmentObject var contactManager: ContactManager
     
     @State private var showExportSuccess = false
@@ -28,10 +27,7 @@ struct SettingsView: View {
                 settingsSection("Allgemein", icon: "gear") {
                     Toggle("Beim Anmelden starten", isOn: $launchAtLogin)
                         .onChange(of: launchAtLogin) { _, newValue in
-                            AppDelegate.setLaunchAtLogin(newValue)
-                        }
-                        .onAppear {
-                            launchAtLogin = AppDelegate.isLaunchAtLoginEnabled
+                            setLaunchAtLogin(newValue)
                         }
                     Toggle("Menüleisten-Symbol", isOn: $enableMenuBar)
                     
@@ -39,38 +35,6 @@ struct SettingsView: View {
                     Text("Wenn aktiviert, läuft die App im Hintergrund weiter, auch wenn das Fenster geschlossen wird. Das Symbol bleibt im Dock sichtbar.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    
-                    Divider()
-                    
-                    // Toolbar-Icon Auswahl
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Toolbar-Symbol")
-                            .fontWeight(.medium)
-                        
-                        HStack(spacing: 12) {
-                            ForEach(ToolbarIconStyle.allCases) { style in
-                                Button(action: { toolbarIconStyle = style.rawValue }) {
-                                    VStack(spacing: 6) {
-                                        AppToolbarIcon(style: style)
-                                        Text(style.label)
-                                            .font(.caption2)
-                                    }
-                                    .padding(8)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(toolbarIconStyle == style.rawValue ? Color.accentColor.opacity(0.15) : Color.clear)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(toolbarIconStyle == style.rawValue ? Color.accentColor : Color.clear, lineWidth: 2)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    
-                    Divider()
                     
                     HStack {
                         Text("Sync-Intervall")
@@ -82,9 +46,6 @@ struct SettingsView: View {
                             Text("2 Stunden").tag(120)
                         }
                         .frame(width: 200)
-                        .onChange(of: syncInterval) { _, _ in
-                            contactManager.updateSyncInterval()
-                        }
                     }
                 }
                 
@@ -99,28 +60,6 @@ struct SettingsView: View {
                             value: $birthdayReminderDays,
                             in: 1...14
                         )
-                    }
-                }
-                
-                // Reminders Integration
-                settingsSection("Erinnerungen-App", icon: "list.bullet") {
-                    HStack {
-                        Text("Status")
-                        Spacer()
-                        if reminderManager.isAuthorized {
-                            Label("Verbunden", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Button("Zugriff gewähren") {
-                                Task { await reminderManager.requestAccess() }
-                            }
-                        }
-                    }
-                    
-                    if reminderManager.reminderListExists {
-                        Label("Liste 'CMS Family & Friends' aktiv", systemImage: "list.bullet.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.caption)
                     }
                 }
                 
@@ -236,18 +175,9 @@ struct SettingsView: View {
                     .fontWeight(.semibold)
             }
             
-            Text("iMessage, Telefon und Mail lesen lokale Datenbanken. So aktivierst du Full Disk Access:")
+            Text("iMessage, Telefon und Mail lesen lokale Datenbanken. Dafür muss die App unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** zugelassen werden.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("1. Klicke unten auf \"Systemeinstellungen öffnen\"")
-                Text("2. Klicke auf das \"＋\"-Symbol")
-                Text("3. Navigiere zur CMSFamilyFriends.app und wähle sie aus")
-                Text("4. Starte die App danach neu")
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
             
             HStack(spacing: 12) {
                 Button(action: openFullDiskAccessSettings) {
@@ -349,4 +279,24 @@ struct SettingsView: View {
         }
     }
     
+    // MARK: - Launch at Login
+    
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        if enabled {
+            // SMAppService für macOS 13+
+            if #available(macOS 13.0, *) {
+                do {
+                    try SMAppService.mainApp.register()
+                } catch {
+                    launchAtLogin = false
+                }
+            }
+        } else {
+            if #available(macOS 13.0, *) {
+                do {
+                    try SMAppService.mainApp.unregister()
+                } catch { }
+            }
+        }
+    }
 }

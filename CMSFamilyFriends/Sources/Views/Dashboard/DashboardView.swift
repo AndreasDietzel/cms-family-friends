@@ -8,23 +8,22 @@ struct DashboardView: View {
     private var overdueContacts: [TrackedContact]
     
     @Query private var allGroups: [ContactGroup]
-    @Query(sort: \ContactReminder.dueDate)
-    private var upcomingReminders: [ContactReminder]
-    
     @Query(sort: \CommunicationEvent.date, order: .reverse)
     private var recentEvents: [CommunicationEvent]
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // Sync-Fehler Banner
+                if !contactManager.syncErrors.isEmpty {
+                    syncErrorBanner
+                }
+                
                 // Header mit Sync-Status
                 headerSection
                 
                 // Überfällige Kontakte
                 overdueSection
-                
-                // Anstehende Erinnerungen
-                remindersSection
                 
                 // Anstehende Geburtstage
                 birthdaySection
@@ -37,6 +36,29 @@ struct DashboardView: View {
             }
             .padding()
         }
+    }
+    
+    // MARK: - Sync Error Banner
+    private var syncErrorBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Sync-Probleme", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            ForEach(contactManager.syncErrors) { error in
+                HStack {
+                    Image(systemName: error.source.icon)
+                        .frame(width: 16)
+                    Text(error.source.displayName)
+                        .fontWeight(.medium)
+                    Text(error.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
     // MARK: - Header
@@ -169,48 +191,6 @@ struct DashboardView: View {
         }
         .padding()
         .background(.blue.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-    
-    // MARK: - Erinnerungen
-    private var remindersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Anstehende Erinnerungen", systemImage: "bell.fill")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundStyle(.purple)
-            
-            let pending = upcomingReminders.filter { !$0.isCompleted }
-            
-            if pending.isEmpty {
-                Text("Keine offenen Erinnerungen")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(pending.prefix(5), id: \.id) { reminder in
-                    HStack {
-                        Image(systemName: "bell")
-                            .foregroundStyle(.purple)
-                        VStack(alignment: .leading) {
-                            Text(reminder.title)
-                                .fontWeight(.medium)
-                            Text(reminder.dueDate?.relativeString ?? "Kein Datum")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if let due = reminder.dueDate, due < Date() {
-                            Text("Überfällig")
-                                .font(.caption2)
-                                .foregroundStyle(.red)
-                                .fontWeight(.bold)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .padding()
-        .background(.purple.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
