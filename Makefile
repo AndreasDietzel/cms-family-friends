@@ -38,7 +38,6 @@ app: release
 	@echo '<key>NSHighResolutionCapable</key><true/>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '<key>NSCalendarsUsageDescription</key><string>CMS Family and Friends needs calendar access to detect meetings with your contacts.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '<key>NSContactsUsageDescription</key><string>CMS Family and Friends needs access to your contacts to sync names, phone numbers and email addresses.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
-	@echo '<key>NSRemindersUsageDescription</key><string>CMS Family and Friends needs reminders access to notify you about contacts.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '<key>NSDesktopFolderUsageDescription</key><string>CMS Family and Friends needs access to local databases for iMessage, WhatsApp and call history.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '</dict></plist>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@# Ad-hoc code signing with stable identifier (required for macOS TCC/FDA)

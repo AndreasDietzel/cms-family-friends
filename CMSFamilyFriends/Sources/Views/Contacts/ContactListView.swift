@@ -5,7 +5,7 @@ import SwiftData
 struct ContactListView: View {
     @Query(sort: \TrackedContact.lastName) private var contacts: [TrackedContact]
     @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
-    @State private var searchText = ""
+    @Binding var searchText: String
     @State private var showingAddContact = false
     @State private var showingImportContacts = false
     @State private var selectedContact: TrackedContact?
@@ -13,9 +13,6 @@ struct ContactListView: View {
     @State private var selectedGroupFilter: ContactGroup?
     @State private var contactToDelete: TrackedContact?
     @State private var showDeleteConfirmation = false
-    @State private var showMeetingDatePicker = false
-    @State private var meetingContact: TrackedContact?
-    @State private var meetingDate = Date()
     
     enum SortOrder: String, CaseIterable {
         case name = "Name"
@@ -56,33 +53,19 @@ struct ContactListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Suchleiste
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Kontakte durchsuchen...", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(8)
-            .background(.quaternary.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal)
-            .padding(.top, 8)
-            
             // Toolbar
             HStack {
+                Text("Sortierung")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .layoutPriority(1)
+                
                 Picker("Sortierung", selection: $sortOrder) {
                     ForEach(SortOrder.allCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 400)
                 
@@ -129,9 +112,7 @@ struct ContactListView: View {
                         .tag(contact)
                         .contextMenu {
                             Button(action: {
-                                meetingContact = contact
-                                meetingDate = Date()
-                                showMeetingDatePicker = true
+                                recordMeeting(for: contact)
                             }) {
                                 Label("Treffen dokumentieren", systemImage: "person.2.circle.fill")
                             }
@@ -142,13 +123,6 @@ struct ContactListView: View {
                             }
                         }
                         .accessibilityLabel("\(contact.fullName), \(contact.isOverdue ? "überfällig" : "aktuell")")
-                }
-            }
-        }
-        .sheet(isPresented: $showMeetingDatePicker) {
-            if let contact = meetingContact {
-                MeetingDatePickerView(contact: contact, initialDate: meetingDate) { date in
-                    recordMeeting(for: contact, on: date)
                 }
             }
         }
@@ -182,80 +156,17 @@ struct ContactListView: View {
     }
     
     /// Real-Life Treffen per Rechtsklick-Kontextmenü dokumentieren
-    private func recordMeeting(for contact: TrackedContact, on date: Date = Date()) {
+    private func recordMeeting(for contact: TrackedContact) {
         let event = CommunicationEvent(
             channel: .reallife,
             direction: .mutual,
-            date: date,
+            date: Date(),
             summary: "Persönliches Treffen",
             isAutoDetected: false
         )
         event.contact = contact
         modelContext.insert(event)
-        if date <= Date() {
-            // Nur vergangene/heutige Treffen als letzten Kontakt setzen
-            if contact.lastContactDate == nil || date > (contact.lastContactDate ?? .distantPast) {
-                contact.lastContactDate = date
-            }
-        }
-    }
-}
-
-/// DatePicker-Sheet für Treffen dokumentieren
-struct MeetingDatePickerView: View {
-    let contact: TrackedContact
-    @State var selectedDate: Date
-    let onConfirm: (Date) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    init(contact: TrackedContact, initialDate: Date = Date(), onConfirm: @escaping (Date) -> Void) {
-        self.contact = contact
-        self._selectedDate = State(initialValue: initialDate)
-        self.onConfirm = onConfirm
-    }
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Treffen mit \(contact.fullName)")
-                .font(.headline)
-            
-            DatePicker(
-                "Datum & Uhrzeit",
-                selection: $selectedDate,
-                displayedComponents: [.date, .hourAndMinute]
-            )
-            .datePickerStyle(.graphical)
-            .frame(maxWidth: 320)
-            
-            if selectedDate > Date() {
-                Label("Geplantes Treffen (Zukunft)", systemImage: "calendar.badge.clock")
-                    .foregroundStyle(.orange)
-                    .font(.caption)
-            }
-            
-            HStack {
-                Button("Abbrechen") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                
-                Spacer()
-                
-                Button("Jetzt (heute)") {
-                    selectedDate = Date()
-                }
-                .buttonStyle(.bordered)
-                
-                Button("Speichern") {
-                    onConfirm(selectedDate)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 380)
+        contact.lastContactDate = Date()
     }
 }
 
@@ -321,8 +232,6 @@ struct ContactDetailView: View {
     @State private var editCustomInterval = 14
     @State private var showMeetingConfirmation = false
     @State private var showDeleteConfirmation = false
-    @State private var showMeetingDatePicker = false
-    @State private var meetingDate = Date()
     
     var body: some View {
         ScrollView {
@@ -338,19 +247,14 @@ struct ContactDetailView: View {
                 
                 // Quick-Action: Real-Life Treffen
                 if !isEditing {
-                    Button(action: { showMeetingDatePicker = true }) {
+                    Button(action: { recordRealLifeMeeting() }) {
                         Label("Treffen dokumentieren", systemImage: "person.2.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                     .controlSize(.large)
-                    .help("Persönliches Treffen dokumentieren – Datum wählbar")
-                    .sheet(isPresented: $showMeetingDatePicker) {
-                        MeetingDatePickerView(contact: contact, initialDate: meetingDate) { date in
-                            recordRealLifeMeeting(on: date)
-                        }
-                    }
+                    .help("Persönliches Treffen jetzt dokumentieren – zählt als Kontakt")
                 }
                 
                 if showMeetingConfirmation {
@@ -597,22 +501,18 @@ struct ContactDetailView: View {
         isEditing = false
     }
     
-    /// Real-Life Treffen mit Datumswahl dokumentieren
-    private func recordRealLifeMeeting(on date: Date = Date()) {
+    /// Real-Life Treffen mit einem Klick dokumentieren
+    private func recordRealLifeMeeting() {
         let event = CommunicationEvent(
             channel: .reallife,
             direction: .mutual,
-            date: date,
+            date: Date(),
             summary: "Persönliches Treffen",
             isAutoDetected: false
         )
         event.contact = contact
         modelContext.insert(event)
-        if date <= Date() {
-            if contact.lastContactDate == nil || date > (contact.lastContactDate ?? .distantPast) {
-                contact.lastContactDate = date
-            }
-        }
+        contact.lastContactDate = Date()
         
         withAnimation {
             showMeetingConfirmation = true
