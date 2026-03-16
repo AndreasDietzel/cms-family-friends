@@ -33,7 +33,7 @@ CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikat
 | 💬 iMessage | Messages SQLite DB | ✅ Implementiert |
 | 📱 WhatsApp | WhatsApp SQLite DB | ✅ Implementiert |
 | ✉️ E-Mail | Mail.app DB | ✅ Implementiert |
-| 📹 FaceTime | Call History | 🔜 Geplant |
+| 📹 FaceTime | Call History | ✅ Implementiert |
 | 👤 Kontakte | Contacts Framework | ✅ Implementiert |
 
 ### Kontaktmanagement
@@ -139,7 +139,7 @@ CMS Family & Friends ist eine native macOS App, die automatisch deine Kommunikat
 - [x] Kontaktpausen-Warnungen
 
 ### Phase 2
-- [ ] FaceTime-Integration
+- [x] FaceTime-Integration
 - [ ] iCloud Sync
 - [ ] Detaillierte Kontakt-Statistiken
 - [ ] Export/Import

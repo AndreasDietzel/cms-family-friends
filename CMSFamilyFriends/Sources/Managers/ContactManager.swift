@@ -423,7 +423,12 @@ class ContactManager: ObservableObject {
         }
         
         // 6. lastContactDate für alle Kontakte aktualisieren
+        let now = Date()
         for contact in trackedContacts {
+            // Korrupte Zukunftsdaten zurücksetzen (z.B. durch fehlerhafte Timestamp-Interpretation)
+            if let existing = contact.lastContactDate, existing > now {
+                contact.lastContactDate = nil
+            }
             if let latestDate = latestDates[contact.id] {
                 if contact.lastContactDate == nil || latestDate > contact.lastContactDate! {
                     contact.lastContactDate = latestDate
@@ -441,6 +446,8 @@ class ContactManager: ObservableObject {
     // MARK: - Helpers
     
     private func updateLatestDate(_ dates: inout [UUID: Date], contactId: UUID, date: Date) {
+        // Zukunftsdaten ignorieren – können durch fehlerhafte Timestamps entstehen
+        guard date <= Date() else { return }
         if let existing = dates[contactId] {
             if date > existing { dates[contactId] = date }
         } else {

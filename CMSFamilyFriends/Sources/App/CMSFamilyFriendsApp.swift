@@ -92,6 +92,12 @@ struct CMSFamilyFriendsApp: App {
         .windowStyle(.titleBar)
         .defaultSize(width: 1000, height: 700)
         
+        // Einstellungen-Fenster (macOS Menü → Einstellungen / ⌘,)
+        Settings {
+            SettingsView()
+                .environmentObject(contactManager)
+        }
+        
         // Menubar Extra für schnellen Zugriff
         MenuBarExtra("CMS Family & Friends", systemImage: "person.2.circle.fill") {
             MenuBarView()

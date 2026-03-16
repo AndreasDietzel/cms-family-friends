@@ -83,8 +83,12 @@ actor WhatsAppService {
         }
         defer { sqlite3_finalize(statement) }
         
-        // WhatsApp macOS verwendet Cocoa Date Reference (2001-01-01)
+        // WhatsApp macOS: Timestamp-Format erkennen (Unix vs Cocoa Reference Date)
+        // Cocoa Reference Date = Sekunden seit 2001-01-01 (typisch < 1 Mrd. für aktuelle Daten)
+        // Unix Timestamp = Sekunden seit 1970-01-01 (typisch > 1,5 Mrd. für aktuelle Daten)
         let cocoaOffset: Double = 978307200
+        
+        // Cutoff für beide Formate binden – der niedrigere Wert matcht in beiden Fällen
         sqlite3_bind_double(statement, 1, Double(cutoffTimestamp) - cocoaOffset)
         
         var messages: [WhatsAppMessage] = []
@@ -95,7 +99,13 @@ actor WhatsAppService {
             let contactJid = sqlite3_column_text(statement, 3).map { String(cString: $0) }
             let partnerName = sqlite3_column_text(statement, 4).map { String(cString: $0) }
             
-            let date = Date(timeIntervalSinceReferenceDate: dateValue)
+            // Auto-Detect: Werte > 1 Mrd. sind Unix-Timestamps, kleinere sind Cocoa Reference Dates
+            let date: Date
+            if dateValue > 1_000_000_000 {
+                date = Date(timeIntervalSince1970: dateValue)
+            } else {
+                date = Date(timeIntervalSinceReferenceDate: dateValue)
+            }
             
             // Telefonnummer aus JID extrahieren (format: 49123456789@s.whatsapp.net)
             let phoneNumber = contactJid?.components(separatedBy: "@").first.map { "+\($0)" }
