@@ -429,15 +429,24 @@ class ContactManager: ObservableObject {
             if let existing = contact.lastContactDate, existing > now {
                 contact.lastContactDate = nil
             }
-            if let latestDate = latestDates[contact.id] {
-                if contact.lastContactDate == nil || latestDate > contact.lastContactDate! {
+            if let latestDate = latestDates[contact.id], latestDate <= now {
+                if let existing = contact.lastContactDate {
+                    if latestDate > existing {
+                        contact.lastContactDate = latestDate
+                    }
+                } else {
                     contact.lastContactDate = latestDate
                 }
             }
         }
         
         // 7. Speichern
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            syncErrors.append(SyncError(source: .contacts, message: "Fehler beim Speichern: \(error.localizedDescription)"))
+            AppLogger.syncFailed(source: .contacts, error: error)
+        }
         
         lastSyncDate = Date()
         isSyncing = false
@@ -480,7 +489,9 @@ class ContactManager: ObservableObject {
                 try await Task.sleep(for: .seconds(seconds))
                 throw ServiceError.notAvailable("Timeout nach \(seconds) Sekunden")
             }
-            let first = try await group.next()!
+            guard let first = try await group.next() else {
+                throw ServiceError.notAvailable("Interner Fehler bei Timeout-Verarbeitung")
+            }
             group.cancelAll()
             return first
         }

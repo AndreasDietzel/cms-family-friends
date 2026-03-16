@@ -1,5 +1,7 @@
 import SwiftUI
 import ServiceManagement
+import SwiftData
+import UniformTypeIdentifiers
 
 /// Einstellungsansicht
 struct SettingsView: View {
@@ -12,9 +14,11 @@ struct SettingsView: View {
     @AppStorage("keepInDock") private var keepInDock = true
     
     @EnvironmentObject var contactManager: ContactManager
+    @Environment(\.modelContext) private var modelContext
     
     @State private var showExportSuccess = false
     @State private var showImportPicker = false
+    @State private var loginError: String?
     
     var body: some View {
         ScrollView {
@@ -29,6 +33,11 @@ struct SettingsView: View {
                         .onChange(of: launchAtLogin) { _, newValue in
                             setLaunchAtLogin(newValue)
                         }
+                    if let loginError {
+                        Text(loginError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                     Toggle("Menüleisten-Symbol", isOn: $enableMenuBar)
                     
                     Toggle("Im Dock behalten (Hintergrund)", isOn: $keepInDock)
@@ -272,9 +281,23 @@ struct SettingsView: View {
     // MARK: - Export / Import
     
     private func exportData() {
-        // Placeholder – DataExporter nutzt eigenen View-Flow
-        showExportSuccess = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+        let panel = NSSavePanel()
+        panel.title = "Kontakte exportieren"
+        panel.nameFieldStringValue = "cms-family-friends-export.json"
+        panel.allowedContentTypes = [.json]
+        
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        
+        do {
+            let contacts = try modelContext.fetch(FetchDescriptor<TrackedContact>())
+            let groups = try modelContext.fetch(FetchDescriptor<ContactGroup>())
+            let jsonData = try DataExporter.exportData(contacts: contacts, groups: groups)
+            try jsonData.write(to: url)
+            showExportSuccess = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                showExportSuccess = false
+            }
+        } catch {
             showExportSuccess = false
         }
     }
@@ -282,20 +305,23 @@ struct SettingsView: View {
     // MARK: - Launch at Login
     
     private func setLaunchAtLogin(_ enabled: Bool) {
+        loginError = nil
         if enabled {
-            // SMAppService für macOS 13+
             if #available(macOS 13.0, *) {
                 do {
                     try SMAppService.mainApp.register()
                 } catch {
                     launchAtLogin = false
+                    loginError = "Autostart konnte nicht aktiviert werden: \(error.localizedDescription)"
                 }
             }
         } else {
             if #available(macOS 13.0, *) {
                 do {
                     try SMAppService.mainApp.unregister()
-                } catch { }
+                } catch {
+                    loginError = "Autostart konnte nicht deaktiviert werden: \(error.localizedDescription)"
+                }
             }
         }
     }

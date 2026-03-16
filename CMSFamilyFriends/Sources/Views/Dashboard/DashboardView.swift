@@ -4,7 +4,7 @@ import SwiftData
 /// Dashboard-Hauptansicht mit Übersicht aller Kontakte
 struct DashboardView: View {
     @EnvironmentObject var contactManager: ContactManager
-    @Query(sort: \TrackedContact.lastContactDate, order: .forward)
+    @Query(sort: \TrackedContact.lastContactDate, order: .reverse)
     private var overdueContacts: [TrackedContact]
     
     @Query private var allGroups: [ContactGroup]

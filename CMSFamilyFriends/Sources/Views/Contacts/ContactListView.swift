@@ -45,7 +45,7 @@ struct ContactListView: View {
         case .name:
             result.sort { $0.lastName < $1.lastName }
         case .lastContact:
-            result.sort { ($0.lastContactDate ?? .distantPast) < ($1.lastContactDate ?? .distantPast) }
+            result.sort { ($0.lastContactDate ?? .distantPast) > ($1.lastContactDate ?? .distantPast) }
         case .urgency:
             result.sort { $0.urgencyLevel > $1.urgencyLevel }
         }

@@ -39,9 +39,8 @@ actor MessageService {
         }
         defer { sqlite3_close(db) }
         
-        // macOS Cocoa Timestamp Offset (2001-01-01 vs Unix 1970-01-01)
-        let cocoaOffset: Int64 = 978307200
-        let cutoffTimestamp = Int64(Date().timeIntervalSince1970 - Double(daysPast * 86400) - Double(cocoaOffset)) * 1_000_000_000
+        // iMessage DB speichert Timestamps als Nanosekunden seit 2001-01-01 (Cocoa Reference Date)
+        let cutoffTimestamp = Int64(Date().addingTimeInterval(-Double(daysPast * 86400)).timeIntervalSinceReferenceDate) * 1_000_000_000
         
         // Privacy by Design: Kein Nachrichtentext (m.text) abfragen – nur Metadaten
         let query = """
@@ -71,7 +70,7 @@ actor MessageService {
             let handleId = sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? ""
             let chatName = sqlite3_column_text(statement, 4).map { String(cString: $0) }
             
-            let date = Date(timeIntervalSince1970: Double(dateNano) / 1_000_000_000 + Double(cocoaOffset))
+            let date = Date(timeIntervalSinceReferenceDate: Double(dateNano) / 1_000_000_000)
             
             messages.append(MessageInfo(
                 rowId: rowId,

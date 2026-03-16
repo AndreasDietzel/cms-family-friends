@@ -12,19 +12,24 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(selectedTab: $selectedTab, selectedGroup: $selectedGroup)
         } detail: {
-            if let group = selectedGroup {
-                ContactListView(searchText: $searchText, filterGroup: group)
-                    .id(group.id)
-            } else {
-                switch selectedTab {
-                case .dashboard:
-                    DashboardView()
-                case .contacts:
-                    ContactListView(searchText: $searchText)
-                case .groups:
-                    GroupListView()
-                case .settings:
-                    SettingsView()
+            switch selectedTab {
+            case .settings:
+                SettingsView()
+            default:
+                if let group = selectedGroup {
+                    ContactListView(searchText: $searchText, filterGroup: group)
+                        .id(group.id)
+                } else {
+                    switch selectedTab {
+                    case .dashboard:
+                        DashboardView()
+                    case .contacts:
+                        ContactListView(searchText: $searchText)
+                    case .groups:
+                        GroupListView()
+                    case .settings:
+                        SettingsView()
+                    }
                 }
             }
         }

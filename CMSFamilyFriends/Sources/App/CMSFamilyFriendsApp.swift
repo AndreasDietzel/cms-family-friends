@@ -15,8 +15,9 @@ struct CMSFamilyFriendsApp: App {
     let modelContainer: ModelContainer
     
     init() {
-        // Datenbank vor SwiftData bereinigen (ContactReminder entfernen)
+        // Datenbank vor SwiftData bereinigen
         Self.migrateRemoveReminders()
+        Self.migrateFixWhatsAppTimestamps()
         
         do {
             let schema = Schema([
@@ -71,6 +72,48 @@ struct CMSFamilyFriendsApp: App {
         }
     }
     
+    /// Korrigiert WhatsApp-Timestamps die als Cocoa Reference Date statt Unix interpretiert wurden (+978307200s ≈ 31 Jahre)
+    /// Betrifft CommunicationEvent-Daten und lastContactDate von TrackedContacts
+    private static func migrateFixWhatsAppTimestamps() {
+        // Einmalige Migration – Flag prüfen
+        guard !UserDefaults.standard.bool(forKey: "didFixWhatsAppTimestamps") else { return }
+        
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dbPath = appSupport.appendingPathComponent("CMSFamilyFriends/CMSFamilyFriends.store").path
+        
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+        
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+        
+        // SwiftData speichert Dates als timeIntervalSinceReferenceDate (Sekunden seit 2001-01-01)
+        // Korrupte WhatsApp-Daten liegen ~31 Jahre (978307200s) in der Zukunft
+        let cocoaOffset: Double = 978307200
+        // Aktuelles Datum als Reference Date
+        let nowRef = Date().timeIntervalSinceReferenceDate
+        
+        // 1. WhatsApp CommunicationEvents mit Zukunftsdaten korrigieren (sourceIdentifier beginnt mit "wa-")
+        let fixEvents = """
+            UPDATE ZCOMMUNICATIONEVENT
+            SET ZDATE = ZDATE - \(cocoaOffset)
+            WHERE ZSOURCEIDENTIFIER LIKE 'wa-%'
+              AND ZDATE > \(nowRef)
+        """
+        sqlite3_exec(db, fixEvents, nil, nil, nil)
+        
+        // 2. lastContactDate von TrackedContacts zurücksetzen, wenn in der Zukunft
+        // (wird beim nächsten Sync automatisch korrekt neu berechnet)
+        let fixContacts = """
+            UPDATE ZTRACKEDCONTACT
+            SET ZLASTCONTACTDATE = NULL
+            WHERE ZLASTCONTACTDATE > \(nowRef)
+        """
+        sqlite3_exec(db, fixContacts, nil, nil, nil)
+        
+        UserDefaults.standard.set(true, forKey: "didFixWhatsAppTimestamps")
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -96,6 +139,7 @@ struct CMSFamilyFriendsApp: App {
         Settings {
             SettingsView()
                 .environmentObject(contactManager)
+                .modelContainer(modelContainer)
         }
         
         // Menubar Extra für schnellen Zugriff
