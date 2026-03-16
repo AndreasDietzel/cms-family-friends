@@ -60,6 +60,7 @@ actor WhatsAppService {
         let cutoffTimestamp = Int64(Date().timeIntervalSince1970) - Int64(daysPast * 86400)
         
         // Privacy by Design: Kein ZTEXT abfragen – nur Metadaten
+        // Status-Updates ausschließen – nur Chat, Audio & Video Kommunikation
         let query = """
             SELECT ZWAMESSAGE.Z_PK, ZWAMESSAGE.ZMESSAGEDATE,
                    ZWAMESSAGE.ZISFROMME, ZWACHATSESSION.ZCONTACTJID,
@@ -67,6 +68,8 @@ actor WhatsAppService {
             FROM ZWAMESSAGE
             LEFT JOIN ZWACHATSESSION ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
             WHERE ZWAMESSAGE.ZMESSAGEDATE > ?
+              AND (ZWACHATSESSION.ZCONTACTJID IS NULL
+                   OR ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@broadcast')
             ORDER BY ZWAMESSAGE.ZMESSAGEDATE DESC
             LIMIT 5000
         """
