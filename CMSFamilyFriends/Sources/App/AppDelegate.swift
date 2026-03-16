@@ -8,6 +8,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Wird von CMSFamilyFriendsApp gesetzt
     var keepInDock = true
     
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Sicherstellen, dass die App im Dock angezeigt wird (nicht nur MenuBar).
+        // Verzögert, damit SwiftUI MenuBarExtra die Policy nicht überschreibt.
+        DispatchQueue.main.async {
+            NSApplication.shared.setActivationPolicy(.regular)
+        }
+    }
+    
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // false = App läuft weiter wenn Fenster geschlossen wird
         // true  = App beendet sich wenn letztes Fenster zu ist

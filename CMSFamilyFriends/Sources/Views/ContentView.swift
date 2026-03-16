@@ -110,14 +110,8 @@ struct SidebarView: View {
             if !groups.isEmpty {
                 Section("Gruppen") {
                     ForEach(groups, id: \.id) { group in
-                        Button {
-                            selectedGroup = group
-                            selectedTab = .contacts
-                        } label: {
+                        Label {
                             HStack {
-                                Image(systemName: group.icon)
-                                    .foregroundStyle(Color(hex: group.colorHex) ?? .blue)
-                                    .frame(width: 20)
                                 Text(group.name)
                                 Spacer()
                                 if group.overdueCount > 0 {
@@ -135,9 +129,15 @@ struct SidebarView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                        } icon: {
+                            Image(systemName: group.icon)
+                                .foregroundStyle(Color(hex: group.colorHex) ?? .blue)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 2)
+                        .tag(SidebarTab.contacts)
+                        .onTapGesture {
+                            selectedGroup = group
+                            selectedTab = .contacts
+                        }
                     }
                 }
             }
@@ -145,13 +145,14 @@ struct SidebarView: View {
             Section {
                 Label(SidebarTab.settings.title, systemImage: SidebarTab.settings.icon)
                     .tag(SidebarTab.settings)
-                    .badge(contactManager.syncErrors.count)
             }
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-        .onChange(of: selectedTab) { _, _ in
-            selectedGroup = nil
+        .onChange(of: selectedTab) { _, newValue in
+            if newValue != .contacts {
+                selectedGroup = nil
+            }
         }
     }
 }
