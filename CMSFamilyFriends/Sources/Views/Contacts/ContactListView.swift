@@ -6,6 +6,7 @@ struct ContactListView: View {
     @Query(sort: \TrackedContact.lastName) private var contacts: [TrackedContact]
     @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
     @Binding var searchText: String
+    var filterGroup: ContactGroup? = nil
     @State private var showingAddContact = false
     @State private var showingImportContacts = false
     @State private var selectedContact: TrackedContact?
@@ -23,8 +24,9 @@ struct ContactListView: View {
     var filteredAndSortedContacts: [TrackedContact] {
         var result = contacts
         
-        // Gruppenfilter
-        if let group = selectedGroupFilter {
+        // Gruppenfilter (Sidebar oder Picker)
+        let activeGroup = filterGroup ?? selectedGroupFilter
+        if let group = activeGroup {
             result = result.filter { $0.group?.id == group.id }
         }
         

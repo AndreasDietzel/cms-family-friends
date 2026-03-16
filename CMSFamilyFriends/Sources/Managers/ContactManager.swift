@@ -71,51 +71,14 @@ class ContactManager: ObservableObject {
         syncTimer = nil
     }
     
-    /// Sync-Timer mit neuem Intervall neu starten (z.B. nach Settings-Änderung)
-    func updateSyncInterval() {
-        guard isTracking else { return }
-        syncTimer?.invalidate()
-        let interval = max(syncIntervalMinutes, 15) * 60
-        syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.performSync()
-            }
-        }
-    }
-    
     // MARK: - Data Source Availability Check
     
     func checkDataSourceAvailability() async {
         dataSourceStatuses[.calendar] = .checking
         dataSourceStatuses[.contacts] = .checking
         
-        // Kalender-Zugriff prüfen
-        do {
-            let calendarAccess = try await calendarService.requestAccess()
-            dataSourceStatuses[.calendar] = calendarAccess ? .connected : .needsAccess
-        } catch {
-            if let serviceError = error as? ServiceError, case .notAuthorized = serviceError {
-                dataSourceStatuses[.calendar] = .needsAccess
-            } else {
-                dataSourceStatuses[.calendar] = .unavailable(reason: "Fehler")
-            }
-        }
-        
-        // Kontakte-Zugriff prüfen
-        do {
-            let contactsAccess = try await contactsService.requestAccess()
-            dataSourceStatuses[.contacts] = contactsAccess ? .connected : .needsAccess
-        } catch {
-            if let serviceError = error as? ServiceError, case .notAuthorized = serviceError {
-                dataSourceStatuses[.contacts] = .needsAccess
-            } else {
-                dataSourceStatuses[.contacts] = .unavailable(reason: "Fehler")
-            }
-        }
-        
         let messageAccess = await messageService.checkAccess()
         dataSourceStatuses[.imessage] = messageAccess ? .connected : .needsAccess
-        AppLogger.log("iMessage access: \(messageAccess)")
         
         let whatsAppAccess = await whatsAppService.checkAccess()
         dataSourceStatuses[.whatsapp] = whatsAppAccess ? .connected : .unavailable(reason: "Nicht installiert")
@@ -123,12 +86,9 @@ class ContactManager: ObservableObject {
         let callAccess = await callHistoryService.checkAccess()
         dataSourceStatuses[.phone] = callAccess ? .connected : .needsAccess
         dataSourceStatuses[.facetime] = callAccess ? .connected : .needsAccess
-        AppLogger.log("CallHistory access: \(callAccess)")
         
         let mailAccess = await mailService.checkAccess()
         dataSourceStatuses[.email] = mailAccess ? .connected : .needsAccess
-        AppLogger.log("Mail access: \(mailAccess)")
-        AppLogger.log("Bundle: \(Bundle.main.bundleIdentifier ?? "nil"), Path: \(Bundle.main.bundlePath)")
     }
     
     // MARK: - Contact Lookup
@@ -255,20 +215,6 @@ class ContactManager: ObservableObject {
         
         // 2. Lookup-Tabelle aufbauen (Phone/Email/Name → TrackedContact)
         let lookups = await buildLookups(trackedContacts: trackedContacts)
-        
-        // 2a. Bereinigung: ALLE Events mit Datum in der Zukunft löschen
-        //     Verhindert fehlerhafte "letzter Kontakt" Anzeige
-        do {
-            let now = Date()
-            let allEvents = try modelContext.fetch(FetchDescriptor<CommunicationEvent>())
-            let badEvents = allEvents.filter { $0.date > now }
-            if !badEvents.isEmpty {
-                AppLogger.contactOperation("Bereinigung (Datum in der Zukunft)", count: badEvents.count)
-                for event in badEvents {
-                    modelContext.delete(event)
-                }
-            }
-        } catch { }
         
         // 3. Existierende sourceIdentifiers laden für Deduplizierung
         let existingIds: Set<String>
@@ -447,8 +393,6 @@ class ContactManager: ObservableObject {
             var count = 0
             
             for calEvent in events {
-                // Nur vergangene Kalender-Events zählen als "Kontakt"
-                guard calEvent.startDate <= Date() else { continue }
                 let sourceId = "cal-\(calEvent.identifier)"
                 guard !existingIds.contains(sourceId) else { continue }
                 
@@ -478,12 +422,9 @@ class ContactManager: ObservableObject {
             handleSyncError(.calendar, error)
         }
         
-        // 6. lastContactDate aus ALLEN Events berechnen (nicht nur neu importierte)
+        // 6. lastContactDate für alle Kontakte aktualisieren
         for contact in trackedContacts {
-            let latestEvent = contact.communicationEvents
-                .filter { $0.date <= Date() }  // Nur Events in der Vergangenheit
-                .max(by: { $0.date < $1.date })
-            if let latestDate = latestEvent?.date {
+            if let latestDate = latestDates[contact.id] {
                 if contact.lastContactDate == nil || latestDate > contact.lastContactDate! {
                     contact.lastContactDate = latestDate
                 }
@@ -500,8 +441,6 @@ class ContactManager: ObservableObject {
     // MARK: - Helpers
     
     private func updateLatestDate(_ dates: inout [UUID: Date], contactId: UUID, date: Date) {
-        // Niemals zukünftige Daten als "letzten Kontakt" speichern
-        guard date <= Date() else { return }
         if let existing = dates[contactId] {
             if date > existing { dates[contactId] = date }
         } else {

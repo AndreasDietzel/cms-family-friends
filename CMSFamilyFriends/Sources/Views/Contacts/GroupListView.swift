@@ -107,7 +107,6 @@ struct GroupListView: View {
             )
             modelContext.insert(group)
         }
-        try? modelContext.save()
     }
 }
 
@@ -372,7 +371,6 @@ struct AddGroupView: View {
                         priority: priority
                     )
                     modelContext.insert(group)
-                    try? modelContext.save()
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -411,8 +409,6 @@ struct AutoFocusTextField: NSViewRepresentable {
     }
     
     func updateNSView(_ nsView: NSTextField, context: Context) {
-        // Binding-Referenz im Coordinator aktualisieren (SwiftUI kann View neu erstellen)
-        context.coordinator.text = $text
         if nsView.stringValue != text {
             nsView.stringValue = text
         }
@@ -427,12 +423,6 @@ struct AutoFocusTextField: NSViewRepresentable {
         init(text: Binding<String>) { self.text = text }
         
         func controlTextDidChange(_ obj: Notification) {
-            if let field = obj.object as? NSTextField {
-                text.wrappedValue = field.stringValue
-            }
-        }
-        
-        func controlTextDidEndEditing(_ obj: Notification) {
             if let field = obj.object as? NSTextField {
                 text.wrappedValue = field.stringValue
             }

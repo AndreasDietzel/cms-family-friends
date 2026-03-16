@@ -5,34 +5,40 @@ struct ContentView: View {
     @EnvironmentObject var contactManager: ContactManager
     @Environment(\.modelContext) private var modelContext
     @State private var selectedTab: SidebarTab = .dashboard
+    @State private var selectedGroup: ContactGroup?
     @State private var searchText = ""
     
     var body: some View {
         NavigationSplitView {
-            SidebarView(selectedTab: $selectedTab)
+            SidebarView(selectedTab: $selectedTab, selectedGroup: $selectedGroup)
         } detail: {
-            switch selectedTab {
-            case .dashboard:
-                DashboardView()
-            case .contacts:
-                ContactListView(searchText: $searchText)
-            case .groups:
-                GroupListView()
-            case .settings:
-                SettingsView()
+            if let group = selectedGroup {
+                ContactListView(searchText: $searchText, filterGroup: group)
+                    .id(group.id)
+            } else {
+                switch selectedTab {
+                case .dashboard:
+                    DashboardView()
+                case .contacts:
+                    ContactListView(searchText: $searchText)
+                case .groups:
+                    GroupListView()
+                case .settings:
+                    SettingsView()
+                }
             }
         }
         .searchable(text: $searchText, prompt: "Kontakte durchsuchen...")
-        .navigationTitle(selectedTab.title)
+        .navigationTitle(selectedGroup?.name ?? selectedTab.title)
         .onAppear {
             contactManager.modelContext = modelContext
             contactManager.startTracking()
         }
-        .overlay(alignment: .top) {
+        .safeAreaInset(edge: .bottom) {
             // Sync-Fehler Banner
             if !contactManager.syncErrors.isEmpty {
                 syncErrorBanner
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeInOut, value: contactManager.syncErrors.isEmpty)
@@ -79,25 +85,68 @@ enum SidebarTab: String, CaseIterable {
 
 struct SidebarView: View {
     @Binding var selectedTab: SidebarTab
+    @Binding var selectedGroup: ContactGroup?
     @EnvironmentObject var contactManager: ContactManager
+    @Query(sort: \ContactGroup.priority, order: .reverse) private var groups: [ContactGroup]
     
     var body: some View {
-        List(SidebarTab.allCases, id: \.self, selection: $selectedTab) { tab in
-            Label(tab.title, systemImage: tab.icon)
-                .tag(tab)
-                .badge(badgeCount(for: tab))
-                .accessibilityLabel("\(tab.title)\(badgeCount(for: tab) > 0 ? ", \(badgeCount(for: tab)) Einträge" : "")")
+        List(selection: $selectedTab) {
+            Section {
+                Label(SidebarTab.dashboard.title, systemImage: SidebarTab.dashboard.icon)
+                    .tag(SidebarTab.dashboard)
+                
+                Label(SidebarTab.contacts.title, systemImage: SidebarTab.contacts.icon)
+                    .tag(SidebarTab.contacts)
+                
+                Label(SidebarTab.groups.title, systemImage: SidebarTab.groups.icon)
+                    .tag(SidebarTab.groups)
+            }
+            
+            if !groups.isEmpty {
+                Section("Gruppen") {
+                    ForEach(groups, id: \.id) { group in
+                        Button {
+                            selectedGroup = group
+                            selectedTab = .contacts
+                        } label: {
+                            HStack {
+                                Image(systemName: group.icon)
+                                    .foregroundStyle(Color(hex: group.colorHex) ?? .blue)
+                                    .frame(width: 20)
+                                Text(group.name)
+                                Spacer()
+                                if group.overdueCount > 0 {
+                                    Text("\(group.overdueCount)")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1)
+                                        .background(.red)
+                                        .clipShape(Capsule())
+                                } else {
+                                    Text("\(group.contacts.count)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+            
+            Section {
+                Label(SidebarTab.settings.title, systemImage: SidebarTab.settings.icon)
+                    .tag(SidebarTab.settings)
+                    .badge(contactManager.syncErrors.count)
+            }
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-    }
-    
-    private func badgeCount(for tab: SidebarTab) -> Int {
-        switch tab {
-        case .settings:
-            return contactManager.syncErrors.count
-        default:
-            return 0
+        .onChange(of: selectedTab) { _, _ in
+            selectedGroup = nil
         }
     }
 }

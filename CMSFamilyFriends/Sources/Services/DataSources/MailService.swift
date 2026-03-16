@@ -31,15 +31,9 @@ actor MailService {
         return possiblePaths.first { FileManager.default.fileExists(atPath: $0) }
     }
     
-    /// Prüft ob Zugriff möglich ist (versucht die DB tatsächlich zu öffnen)
+    /// Prüft ob Zugriff möglich ist
     func checkAccess() -> Bool {
-        guard let path = mailDBPath else { return false }
-        
-        // Tatsächlichen SQLite-Zugriff testen
-        var db: OpaquePointer?
-        let result = sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil)
-        defer { sqlite3_close(db) }
-        return result == SQLITE_OK
+        mailDBPath != nil
     }
     
     /// Eigene E-Mail-Adressen aus Mail-Accounts laden
@@ -100,7 +94,7 @@ actor MailService {
         // Eigene Adressen laden für isOutgoing-Erkennung
         loadUserEmailAddresses(db: db)
         
-        // Mail.app speichert Timestamps als Unix-Timestamps (seit 1970)
+        // Mail DB speichert date_sent als Unix-Timestamp (Sekunden seit 1970)
         let cutoffDate = Date().timeIntervalSince1970 - Double(daysPast * 86400)
         
         // Privacy by Design: Kein subject/body – nur Metadaten
@@ -128,7 +122,6 @@ actor MailService {
             let sender = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? ""
             let dateSent = sqlite3_column_double(statement, 3)
             
-            // Mail.app speichert date_sent als Unix-Timestamp (seit 1970)
             let date = Date(timeIntervalSince1970: dateSent)
             let recipients = fetchRecipients(db: db, messageRowId: rowId)
             let isOutgoing = userEmailAddresses.contains(sender.lowercased())

@@ -40,8 +40,8 @@ app: release
 	@echo '<key>NSContactsUsageDescription</key><string>CMS Family and Friends needs access to your contacts to sync names, phone numbers and email addresses.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '<key>NSDesktopFolderUsageDescription</key><string>CMS Family and Friends needs access to local databases for iMessage, WhatsApp and call history.</string>' >> "CMSFamilyFriends.app/Contents/Info.plist"
 	@echo '</dict></plist>' >> "CMSFamilyFriends.app/Contents/Info.plist"
-	@# Ad-hoc code signing with stable identifier (required for macOS TCC/FDA)
-	@codesign --force --deep -s - --identifier com.cmsfamilyfriends.app "CMSFamilyFriends.app"
+	@# Code signing with persistent self-signed certificate (stable CDHash for macOS TCC/FDA permissions)
+	@codesign --force --deep -s "CMSFamilyFriends Dev Signing" --identifier com.cmsfamilyfriends.app "CMSFamilyFriends.app"
 	@echo "✓ CMSFamilyFriends.app created and signed. Open with: open CMSFamilyFriends.app"
 
 # Install to /Applications

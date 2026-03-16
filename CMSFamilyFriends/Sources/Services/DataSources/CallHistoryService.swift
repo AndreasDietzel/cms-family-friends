@@ -21,16 +21,9 @@ actor CallHistoryService {
         return "\(home)/Library/Application Support/CallHistoryDB/CallHistory.storedata"
     }
     
-    /// Prüft ob Zugriff möglich ist (versucht die DB tatsächlich zu öffnen)
+    /// Prüft ob Zugriff möglich ist
     func checkAccess() -> Bool {
-        let path = callHistoryDBPath
-        guard FileManager.default.fileExists(atPath: path) else { return false }
-        
-        // Tatsächlichen SQLite-Zugriff testen (FileManager.isReadableFile ist bei TCC unzuverlässig)
-        var db: OpaquePointer?
-        let result = sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil)
-        defer { sqlite3_close(db) }
-        return result == SQLITE_OK
+        FileManager.default.isReadableFile(atPath: callHistoryDBPath)
     }
     
     /// Letzte Anrufe abrufen

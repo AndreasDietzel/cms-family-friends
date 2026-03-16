@@ -38,4 +38,6 @@ Package.resolved
 # Misc
 *.log
 .env
-CMSFamilyFriends.app
+
+# Build artifacts
+*.app/
