@@ -60,16 +60,21 @@ actor WhatsAppService {
         let cutoffTimestamp = Int64(Date().timeIntervalSince1970) - Int64(daysPast * 86400)
         
         // Privacy by Design: Kein ZTEXT abfragen – nur Metadaten
-        // Status-Updates ausschließen – nur Chat, Audio & Video Kommunikation
+        // Ausschlüsse:
+        //   @broadcast  – status@broadcast (WhatsApp Status-Stories) und Broadcast-Listen
+        //   @newsletter – WhatsApp Channels (einseitige Abonnements, kein persönlicher Kontakt)
+        //   INNER JOIN  – Nachrichten ohne gültige Chat-Session werden nicht importiert
+        //   ZMESSAGETYPE IN (...) – System-Events (Gruppenänderungen, Ephemeral-Notices) ausschließen
         let query = """
             SELECT ZWAMESSAGE.Z_PK, ZWAMESSAGE.ZMESSAGEDATE,
                    ZWAMESSAGE.ZISFROMME, ZWACHATSESSION.ZCONTACTJID,
                    ZWACHATSESSION.ZPARTNERNAME
             FROM ZWAMESSAGE
-            LEFT JOIN ZWACHATSESSION ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
+            INNER JOIN ZWACHATSESSION ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
             WHERE ZWAMESSAGE.ZMESSAGEDATE > ?
-              AND (ZWACHATSESSION.ZCONTACTJID IS NULL
-                   OR ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@broadcast')
+              AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@broadcast'
+              AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@newsletter'
+              AND ZWAMESSAGE.ZMESSAGETYPE NOT IN (6, 14, 15, 16, 17, 20)
             ORDER BY ZWAMESSAGE.ZMESSAGEDATE DESC
             LIMIT 5000
         """

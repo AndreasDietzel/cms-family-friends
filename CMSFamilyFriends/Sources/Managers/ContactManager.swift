@@ -216,7 +216,13 @@ class ContactManager: ObservableObject {
         // 2. Lookup-Tabelle aufbauen (Phone/Email/Name → TrackedContact)
         let lookups = await buildLookups(trackedContacts: trackedContacts)
         
-        // 3. Existierende sourceIdentifiers laden für Deduplizierung
+        // 3. Einmalige Bereinigung alter WhatsApp-Status-Events –
+        //    MUSS vor dem existingIds-Build laufen, damit gelöschte WA-IDs die
+        //    Deduplizierung im selben Sync nicht blockieren.
+        await performWhatsAppStatusCleanupIfNeeded(trackedContacts: trackedContacts)
+        
+        // 4. Existierende sourceIdentifiers laden für Deduplizierung
+        //    (nach Bereinigung: sauber, keine gelöschten WA-IDs drin)
         let existingIds: Set<String>
         do {
             let events = try modelContext.fetch(FetchDescriptor<CommunicationEvent>())
@@ -225,7 +231,7 @@ class ContactManager: ObservableObject {
             existingIds = []
         }
         
-        // 4. Letztes Kontaktdatum pro Kontakt tracken
+        // 5. Letztes Kontaktdatum pro Kontakt tracken
         var latestDates: [UUID: Date] = [:]
         for contact in trackedContacts {
             if let date = contact.lastContactDate {
@@ -233,7 +239,7 @@ class ContactManager: ObservableObject {
             }
         }
         
-        // 5. Events aus allen Quellen importieren
+        // 6. Events aus allen Quellen importieren
         
         // --- Telefon & FaceTime ---
         do {
@@ -452,8 +458,57 @@ class ContactManager: ObservableObject {
         isSyncing = false
     }
     
+    // MARK: - WhatsApp Status Cleanup
+
+    /// Löscht einmalig alle vorhandenen WhatsApp-Events und lässt lastContactDate
+    /// aus den verbleibenden Quellen neu berechnen.
+    /// Wird nur einmal ausgeführt (UserDefaults-Flag) und läuft vor dem nächsten WA-Sync,
+    /// der dann ausschließlich saubere Einträge importiert.
+    private func performWhatsAppStatusCleanupIfNeeded(trackedContacts: [TrackedContact]) async {
+        let flagKey = "whatsappStatusCleanupV1Done"
+        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
+        guard let modelContext else { return }
+
+        do {
+            let allWAEvents = try modelContext.fetch(
+                FetchDescriptor<CommunicationEvent>(
+                    predicate: #Predicate { $0.channelRawValue == "whatsapp" }
+                )
+            )
+            guard !allWAEvents.isEmpty else {
+                UserDefaults.standard.set(true, forKey: flagKey)
+                return
+            }
+
+            // Betroffene Kontakte sammeln
+            let affectedContacts = Set(allWAEvents.compactMap(\.contact))
+
+            // Alle WA-Events löschen
+            for event in allWAEvents {
+                modelContext.delete(event)
+            }
+
+            // lastContactDate aus verbleibenden Events neu berechnen
+            for contact in affectedContacts {
+                let remaining = contact.communicationEvents.filter { $0.channelRawValue != "whatsapp" }
+                contact.lastContactDate = remaining.map(\.date).filter { $0 <= Date() }.max()
+            }
+
+            UserDefaults.standard.set(true, forKey: flagKey)
+            AppLogger.contactOperation(
+                "WhatsApp-Status-Bereinigung: \(allWAEvents.count) Events entfernt, \(affectedContacts.count) Kontakte aktualisiert",
+                count: allWAEvents.count
+            )
+            // Sofort committen – damit das nachfolgende existingIds-Fetch
+            // die gelöschten WA-Events nicht mehr sieht.
+            try? modelContext.save()
+        } catch {
+            AppLogger.syncFailed(source: .whatsapp, error: error)
+        }
+    }
+
     // MARK: - Helpers
-    
+
     private func updateLatestDate(_ dates: inout [UUID: Date], contactId: UUID, date: Date) {
         // Zukunftsdaten ignorieren – können durch fehlerhafte Timestamps entstehen
         guard date <= Date() else { return }

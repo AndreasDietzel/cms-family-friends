@@ -43,11 +43,19 @@ struct ContactListView: View {
         // Sortierung
         switch sortOrder {
         case .name:
-            result.sort { $0.lastName < $1.lastName }
+            result.sort {
+                if $0.lastName != $1.lastName { return $0.lastName < $1.lastName }
+                return $0.firstName < $1.firstName
+            }
         case .lastContact:
             result.sort { ($0.lastContactDate ?? .distantPast) > ($1.lastContactDate ?? .distantPast) }
         case .urgency:
-            result.sort { $0.urgencyLevel > $1.urgencyLevel }
+            result.sort {
+                // Nie kontaktierte Kontakte (kein lastContactDate) ganz nach oben
+                if $0.lastContactDate == nil && $1.lastContactDate != nil { return true }
+                if $0.lastContactDate != nil && $1.lastContactDate == nil { return false }
+                return $0.urgencyLevel > $1.urgencyLevel
+            }
         }
         
         return result
@@ -71,14 +79,16 @@ struct ContactListView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 400)
                 
-                // Gruppenfilter
-                Picker("Gruppe", selection: $selectedGroupFilter) {
-                    Text("Alle Gruppen").tag(nil as ContactGroup?)
-                    ForEach(groups, id: \.id) { group in
-                        Label(group.name, systemImage: group.icon).tag(group as ContactGroup?)
+                // Gruppenfilter – nur sichtbar wenn kein Filter via Sidebar gesetzt
+                if filterGroup == nil {
+                    Picker("Gruppe", selection: $selectedGroupFilter) {
+                        Text("Alle Gruppen").tag(nil as ContactGroup?)
+                        ForEach(groups, id: \.id) { group in
+                            Label(group.name, systemImage: group.icon).tag(group as ContactGroup?)
+                        }
                     }
+                    .frame(width: 180)
                 }
-                .frame(width: 180)
                 
                 Spacer()
                 

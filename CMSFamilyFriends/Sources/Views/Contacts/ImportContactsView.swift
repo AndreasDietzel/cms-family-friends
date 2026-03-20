@@ -138,9 +138,11 @@ struct ImportContactsView: View {
                 if !selectableContacts.isEmpty {
                     Button(allSelectableSelected ? "Keine auswählen" : "Alle auswählen") {
                         if allSelectableSelected {
-                            selectedContacts.removeAll()
+                            // Nur die aktuell sichtbaren (gefilterten) Kontakte abwählen
+                            selectableContacts.forEach { selectedContacts.remove($0.id) }
                         } else {
-                            selectedContacts = Set(selectableContacts.map(\.id))
+                            // Gefilterte Kontakte zur bestehenden Auswahl hinzufügen
+                            selectedContacts.formUnion(selectableContacts.map(\.id))
                         }
                     }
                     .font(.caption)

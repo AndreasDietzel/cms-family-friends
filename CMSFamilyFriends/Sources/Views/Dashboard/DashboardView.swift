@@ -4,8 +4,18 @@ import SwiftData
 /// Dashboard-Hauptansicht mit Übersicht aller Kontakte
 struct DashboardView: View {
     @EnvironmentObject var contactManager: ContactManager
+    var searchText: String = ""
     @Query(sort: \TrackedContact.lastContactDate, order: .reverse)
     private var overdueContacts: [TrackedContact]
+
+    private var filteredContacts: [TrackedContact] {
+        guard !searchText.isEmpty else { return overdueContacts }
+        let query = searchText.lowercased()
+        return overdueContacts.filter {
+            $0.fullName.lowercased().contains(query) ||
+            ($0.nickname?.lowercased().contains(query) ?? false)
+        }
+    }
     
     @Query private var allGroups: [ContactGroup]
     @Query(sort: \CommunicationEvent.date, order: .reverse)
@@ -108,7 +118,7 @@ struct DashboardView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.red)
             
-            let overdue = overdueContacts.filter(\.isOverdue)
+            let overdue = filteredContacts.filter(\.isOverdue)
             
             if overdue.isEmpty {
                 ContentUnavailableView(
@@ -140,7 +150,7 @@ struct DashboardView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.orange)
             
-            let upcoming = overdueContacts
+            let upcoming = filteredContacts
                 .filter { ($0.daysUntilBirthday ?? Int.max) <= 30 }
                 .sorted { ($0.daysUntilBirthday ?? 999) < ($1.daysUntilBirthday ?? 999) }
             

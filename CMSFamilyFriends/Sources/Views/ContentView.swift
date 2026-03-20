@@ -22,7 +22,7 @@ struct ContentView: View {
                 } else {
                     switch selectedTab {
                     case .dashboard:
-                        DashboardView()
+                        DashboardView(searchText: searchText)
                     case .contacts:
                         ContactListView(searchText: $searchText)
                     case .groups:
@@ -102,6 +102,10 @@ struct SidebarView: View {
                 
                 Label(SidebarTab.contacts.title, systemImage: SidebarTab.contacts.icon)
                     .tag(SidebarTab.contacts)
+                    // Gruppenfilter zurücksetzen, auch wenn selectedTab bereits .contacts ist
+                    .simultaneousGesture(TapGesture().onEnded {
+                        selectedGroup = nil
+                    })
                 
                 Label(SidebarTab.groups.title, systemImage: SidebarTab.groups.icon)
                     .tag(SidebarTab.groups)
