@@ -21,12 +21,12 @@ class ContactManager: ObservableObject {
     var modelContext: ModelContext?
     
     // MARK: - Data Source Services
-    private let calendarService = CalendarService()
+    // Hinweis: CalendarService und MailService nicht mehr verwendet –
+    // Es werden ausschließlich direkte Kontakte (Chat, Telefon, Video) synchronisiert.
     private let contactsService = ContactsService()
     private let messageService = MessageService()
     private let callHistoryService = CallHistoryService()
     private let whatsAppService = WhatsAppService()
-    private let mailService = MailService()
     
     // MARK: - Tracking Timer & Rate-Limiting
     private var syncTimer: Timer?
@@ -74,7 +74,9 @@ class ContactManager: ObservableObject {
     // MARK: - Data Source Availability Check
     
     func checkDataSourceAvailability() async {
-        dataSourceStatuses[.calendar] = .checking
+        // E-Mail und Kalender werden nicht mehr synchronisiert (nur direkter Kontakt)
+        dataSourceStatuses[.email] = .disabled
+        dataSourceStatuses[.calendar] = .disabled
         dataSourceStatuses[.contacts] = .checking
         
         let messageAccess = await messageService.checkAccess()
@@ -86,9 +88,6 @@ class ContactManager: ObservableObject {
         let callAccess = await callHistoryService.checkAccess()
         dataSourceStatuses[.phone] = callAccess ? .connected : .needsAccess
         dataSourceStatuses[.facetime] = callAccess ? .connected : .needsAccess
-        
-        let mailAccess = await mailService.checkAccess()
-        dataSourceStatuses[.email] = mailAccess ? .connected : .needsAccess
     }
     
     // MARK: - Contact Lookup
@@ -216,10 +215,12 @@ class ContactManager: ObservableObject {
         // 2. Lookup-Tabelle aufbauen (Phone/Email/Name → TrackedContact)
         let lookups = await buildLookups(trackedContacts: trackedContacts)
         
-        // 3. Einmalige Bereinigung alter WhatsApp-Status-Events –
-        //    MUSS vor dem existingIds-Build laufen, damit gelöschte WA-IDs die
-        //    Deduplizierung im selben Sync nicht blockieren.
+        // 3a. Einmalige Bereinigung alter WhatsApp-Status-Events
         await performWhatsAppStatusCleanupIfNeeded(trackedContacts: trackedContacts)
+        
+        // 3b. Einmalige Bereinigung von E-Mail- und Kalender-Events
+        //     (werden nicht mehr synchronisiert – nur direkter Kontakt)
+        await performEmailCalendarCleanupIfNeeded(trackedContacts: trackedContacts)
         
         // 4. Existierende sourceIdentifiers laden für Deduplizierung
         //    (nach Bereinigung: sauber, keine gelöschten WA-IDs drin)
@@ -349,85 +350,6 @@ class ContactManager: ObservableObject {
             handleSyncError(.whatsapp, error)
         }
         
-        // --- E-Mail ---
-        do {
-            let emails = try await withTimeout(seconds: 15) {
-                try await self.mailService.fetchRecentEmails()
-            }
-            var count = 0
-            
-            for email in emails {
-                let sourceId = "mail-\(email.messageId)"
-                guard !existingIds.contains(sourceId) else { continue }
-                
-                // Matching: Absender oder Empfänger gegen Kontakte prüfen
-                let allAddresses = [email.senderAddress] + email.recipientAddresses
-                var matchedContact: TrackedContact?
-                for addr in allAddresses {
-                    if let c = matchContact(email: addr, lookups: lookups) {
-                        matchedContact = c
-                        break
-                    }
-                }
-                guard let contact = matchedContact else { continue }
-                
-                let event = CommunicationEvent(
-                    channel: .email,
-                    direction: email.isOutgoing ? .outgoing : .incoming,
-                    date: email.date,
-                    isAutoDetected: true,
-                    sourceIdentifier: sourceId
-                )
-                event.contact = contact
-                modelContext.insert(event)
-                count += 1
-                updateLatestDate(&latestDates, contactId: contact.id, date: email.date)
-            }
-            
-            lastSyncResults[.email] = count
-            dataSourceStatuses[.email] = .connected
-            AppLogger.syncCompleted(source: .email, itemCount: count)
-        } catch {
-            handleSyncError(.email, error)
-        }
-        
-        // --- Kalender (Treffen mit Teilnehmern) ---
-        do {
-            let events = try await withTimeout(seconds: 15) {
-                try await self.calendarService.fetchMeetingEvents()
-            }
-            var count = 0
-            
-            for calEvent in events {
-                let sourceId = "cal-\(calEvent.identifier)"
-                guard !existingIds.contains(sourceId) else { continue }
-                
-                // Jeden Teilnehmer matchen
-                for attendeeEmail in calEvent.attendees {
-                    guard let contact = matchContact(email: attendeeEmail, lookups: lookups) else { continue }
-                    
-                    let event = CommunicationEvent(
-                        channel: .calendar,
-                        direction: .mutual,
-                        date: calEvent.startDate,
-                        summary: calEvent.title,
-                        isAutoDetected: true,
-                        sourceIdentifier: "\(sourceId)-\(attendeeEmail)"
-                    )
-                    event.contact = contact
-                    modelContext.insert(event)
-                    count += 1
-                    updateLatestDate(&latestDates, contactId: contact.id, date: calEvent.startDate)
-                }
-            }
-            
-            lastSyncResults[.calendar] = count
-            dataSourceStatuses[.calendar] = .connected
-            AppLogger.syncCompleted(source: .calendar, itemCount: count)
-        } catch {
-            handleSyncError(.calendar, error)
-        }
-        
         // 6. lastContactDate für alle Kontakte aktualisieren
         let now = Date()
         for contact in trackedContacts {
@@ -458,6 +380,50 @@ class ContactManager: ObservableObject {
         isSyncing = false
     }
     
+    // MARK: - Data Cleanup Migrations
+
+    /// Löscht einmalig alle vorhandenen E-Mail- und Kalender-Events.
+    /// Diese Kanäle werden nicht mehr synchronisiert (nur direkter Kontakt: Chat, Telefon, Video).
+    private func performEmailCalendarCleanupIfNeeded(trackedContacts: [TrackedContact]) async {
+        let flagKey = "emailCalendarCleanupV1Done"
+        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
+        guard let modelContext else { return }
+
+        do {
+            let eventsToDelete = try modelContext.fetch(
+                FetchDescriptor<CommunicationEvent>(
+                    predicate: #Predicate { $0.channelRawValue == "email" || $0.channelRawValue == "calendar" }
+                )
+            )
+            guard !eventsToDelete.isEmpty else {
+                UserDefaults.standard.set(true, forKey: flagKey)
+                return
+            }
+
+            let affectedContacts = Set(eventsToDelete.compactMap(\.contact))
+
+            for event in eventsToDelete {
+                modelContext.delete(event)
+            }
+
+            // lastContactDate aus verbleibenden direkten Kontakt-Events neu berechnen
+            let directChannels: Set<String> = ["phone", "facetime", "imessage", "whatsapp", "reallife", "manual"]
+            for contact in affectedContacts {
+                let remaining = contact.communicationEvents.filter { directChannels.contains($0.channelRawValue) }
+                contact.lastContactDate = remaining.map(\.date).filter { $0 <= Date() }.max()
+            }
+
+            UserDefaults.standard.set(true, forKey: flagKey)
+            AppLogger.contactOperation(
+                "E-Mail/Kalender-Bereinigung: \(eventsToDelete.count) Events entfernt, \(affectedContacts.count) Kontakte aktualisiert",
+                count: eventsToDelete.count
+            )
+            try? modelContext.save()
+        } catch {
+            AppLogger.syncFailed(source: .email, error: error)
+        }
+    }
+
     // MARK: - WhatsApp Status Cleanup
 
     /// Löscht einmalig alle vorhandenen WhatsApp-Events und lässt lastContactDate

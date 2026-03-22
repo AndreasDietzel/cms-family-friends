@@ -43,6 +43,8 @@ actor MessageService {
         let cutoffTimestamp = Int64(Date().addingTimeInterval(-Double(daysPast * 86400)).timeIntervalSinceReferenceDate) * 1_000_000_000
         
         // Privacy by Design: Kein Nachrichtentext (m.text) abfragen – nur Metadaten
+        // item_type = 0: nur echte Nachrichten (keine Gruppenereignisse / System-Messages)
+        // is_empty = 0: leere Nachrichten (Lesebestätigungen, Status-Events) ausschließen
         let query = """
             SELECT m.ROWID, m.date, m.is_from_me, h.id, c.display_name
             FROM message m
@@ -50,6 +52,8 @@ actor MessageService {
             LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
             LEFT JOIN chat c ON cmj.chat_id = c.ROWID
             WHERE m.date > ?
+              AND m.item_type = 0
+              AND m.is_empty = 0
             ORDER BY m.date DESC
             LIMIT 5000
         """

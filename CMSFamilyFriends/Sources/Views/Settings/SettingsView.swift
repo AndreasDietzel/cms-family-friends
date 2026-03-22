@@ -160,9 +160,9 @@ struct SettingsView: View {
     
     // MARK: - Full Disk Access
     
-    /// Prüft ob iMessage, Telefon oder Mail keinen Zugriff haben
+    /// Prüft ob iMessage oder Telefon keinen Zugriff haben
     private var needsFullDiskAccess: Bool {
-        let fdaSources: [DataSource] = [.imessage, .phone, .email]
+        let fdaSources: [DataSource] = [.imessage, .phone]
         return fdaSources.contains { source in
             let status = contactManager.dataSourceStatuses[source]
             switch status {
@@ -184,7 +184,7 @@ struct SettingsView: View {
                     .fontWeight(.semibold)
             }
             
-            Text("iMessage, Telefon und Mail lesen lokale Datenbanken. Dafür muss die App unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** zugelassen werden.")
+            Text("iMessage und Telefon/FaceTime lesen lokale Datenbanken. Dafür muss die App unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** zugelassen werden.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             
@@ -265,7 +265,7 @@ struct SettingsView: View {
             
             // FDA-Quellen bekommen einen Button
             if case .needsAccess = status,
-               [.imessage, .phone, .email].contains(source) {
+               [.imessage, .phone].contains(source) {
                 Button(action: openFullDiskAccessSettings) {
                     Image(systemName: "arrow.right.circle")
                         .font(.caption)
