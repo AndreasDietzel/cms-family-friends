@@ -61,6 +61,7 @@ actor WhatsAppService {
         
         // Privacy by Design: Kein ZTEXT abfragen – nur Metadaten
         // Ausschlüsse:
+        //   %@status          – kontaktbezogene Status-Einträge (z.B. 4917...@status)
         //   @broadcast        – status@broadcast (WhatsApp Status-Stories) und Broadcast-Listen
         //   status@%          – alle Status-Container (z.B. status@broadcast explizit)
         //   @newsletter       – WhatsApp Channels (einseitige Abonnements, kein persönlicher Kontakt)
@@ -81,6 +82,8 @@ actor WhatsAppService {
             FROM ZWAMESSAGE
             INNER JOIN ZWACHATSESSION ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
             WHERE ZWAMESSAGE.ZMESSAGEDATE > ?
+                            AND ZWACHATSESSION.ZCONTACTJID LIKE '%@s.whatsapp.net'
+                            AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@status'
               AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@broadcast'
               AND ZWACHATSESSION.ZCONTACTJID NOT LIKE 'status@%'
               AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@newsletter'

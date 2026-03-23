@@ -426,12 +426,12 @@ class ContactManager: ObservableObject {
 
     // MARK: - WhatsApp Status Cleanup
 
-    /// V2-Migration: Löscht alle vorhandenen WhatsApp-Events aus der DB und
+    /// V3-Migration: Löscht alle vorhandenen WhatsApp-Events aus der DB und
     /// lässt sie beim nächsten Sync sauber reimportieren (ohne Status-Stories).
-    /// Supersedes V1 – V1 lief, aber Status-Typen 23/26 und status@%-JIDs
-    /// wurden erst mit dem V2-Filter im WhatsAppService ausgeschlossen.
+    /// Supersedes V1/V2 – in der Praxis treten Status-Einträge auch als
+    /// kontaktbezogene JIDs mit Suffix @status auf (z.B. 4917...@status).
     private func performWhatsAppStatusCleanupIfNeeded(trackedContacts: [TrackedContact]) async {
-        let flagKey = "whatsappStatusCleanupV2Done"
+        let flagKey = "whatsappStatusCleanupV3Done"
         guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
         guard let modelContext else { return }
 
@@ -443,6 +443,7 @@ class ContactManager: ObservableObject {
             )
             // V1-Flag ebenfalls setzen, damit V1 nicht nochmals läuft
             UserDefaults.standard.set(true, forKey: "whatsappStatusCleanupV1Done")
+            UserDefaults.standard.set(true, forKey: "whatsappStatusCleanupV2Done")
 
             guard !allWAEvents.isEmpty else {
                 UserDefaults.standard.set(true, forKey: flagKey)
@@ -466,7 +467,7 @@ class ContactManager: ObservableObject {
 
             UserDefaults.standard.set(true, forKey: flagKey)
             AppLogger.contactOperation(
-                "WhatsApp V2-Bereinigung: \(allWAEvents.count) Events entfernt (inkl. Status-Stories), \(affectedContacts.count) Kontakte aktualisiert",
+                "WhatsApp V3-Bereinigung: \(allWAEvents.count) Events entfernt (inkl. @status), \(affectedContacts.count) Kontakte aktualisiert",
                 count: allWAEvents.count
             )
             // Sofort committen – damit das nachfolgende existingIds-Fetch
