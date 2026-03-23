@@ -489,18 +489,21 @@ class ContactManager: ObservableObject {
         guard let modelContext else { return }
 
         do {
-            let autoWAEvents = try modelContext.fetch(
+            let allWAEvents = try modelContext.fetch(
                 FetchDescriptor<CommunicationEvent>(
-                    predicate: #Predicate {
-                        $0.channelRawValue == "whatsapp" && $0.isAutoDetected == true
-                    }
+                    predicate: #Predicate { $0.channelRawValue == "whatsapp" }
                 )
             )
-            guard !autoWAEvents.isEmpty else { return }
+            // Robust filtern (in-memory), damit keine Predicate-Übersetzung zu false negatives führt.
+            // Importierte WA-Events erkennen wir an isAutoDetected oder sourceIdentifier mit Prefix "wa-".
+            let importedWAEvents = allWAEvents.filter {
+                $0.isAutoDetected || ($0.sourceIdentifier?.hasPrefix("wa-") ?? false)
+            }
+            guard !importedWAEvents.isEmpty else { return }
 
-            let affectedContacts = Set(autoWAEvents.compactMap(\.contact))
+            let affectedContacts = Set(importedWAEvents.compactMap(\.contact))
 
-            for event in autoWAEvents {
+            for event in importedWAEvents {
                 modelContext.delete(event)
             }
 
@@ -513,8 +516,8 @@ class ContactManager: ObservableObject {
 
             try? modelContext.save()
             AppLogger.contactOperation(
-                "WhatsApp-Refresh: \(autoWAEvents.count) auto Events entfernt (werden sauber neu importiert)",
-                count: autoWAEvents.count
+                "WhatsApp-Refresh: \(importedWAEvents.count) importierte Events entfernt (werden sauber neu importiert)",
+                count: importedWAEvents.count
             )
         } catch {
             AppLogger.syncFailed(source: .whatsapp, error: error)
