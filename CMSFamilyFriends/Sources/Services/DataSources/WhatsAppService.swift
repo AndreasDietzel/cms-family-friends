@@ -61,10 +61,19 @@ actor WhatsAppService {
         
         // Privacy by Design: Kein ZTEXT abfragen – nur Metadaten
         // Ausschlüsse:
-        //   @broadcast  – status@broadcast (WhatsApp Status-Stories) und Broadcast-Listen
-        //   @newsletter – WhatsApp Channels (einseitige Abonnements, kein persönlicher Kontakt)
-        //   INNER JOIN  – Nachrichten ohne gültige Chat-Session werden nicht importiert
-        //   ZMESSAGETYPE IN (...) – System-Events (Gruppenänderungen, Ephemeral-Notices) ausschließen
+        //   @broadcast        – status@broadcast (WhatsApp Status-Stories) und Broadcast-Listen
+        //   status@%          – alle Status-Container (z.B. status@broadcast explizit)
+        //   @newsletter       – WhatsApp Channels (einseitige Abonnements, kein persönlicher Kontakt)
+        //   INNER JOIN        – Nachrichten ohne gültige Chat-Session werden nicht importiert
+        //   ZMESSAGETYPE IN (...):
+        //     6  = System/Gruppen-Ereignis
+        //     14 = Ephemeral-Nachricht
+        //     15 = Ephemeral-Timer-Änderung
+        //     16 = Ephemeral-Vorschau
+        //     17 = Gruppen-Einladung
+        //     20 = Systembenachrichtigung
+        //     23 = Status-Ablauf-Benachrichtigung
+        //     26 = Status-/Story-Benachrichtigung (gesehener Status)
         let query = """
             SELECT ZWAMESSAGE.Z_PK, ZWAMESSAGE.ZMESSAGEDATE,
                    ZWAMESSAGE.ZISFROMME, ZWACHATSESSION.ZCONTACTJID,
@@ -73,8 +82,9 @@ actor WhatsAppService {
             INNER JOIN ZWACHATSESSION ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
             WHERE ZWAMESSAGE.ZMESSAGEDATE > ?
               AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@broadcast'
+              AND ZWACHATSESSION.ZCONTACTJID NOT LIKE 'status@%'
               AND ZWACHATSESSION.ZCONTACTJID NOT LIKE '%@newsletter'
-              AND ZWAMESSAGE.ZMESSAGETYPE NOT IN (6, 14, 15, 16, 17, 20)
+              AND ZWAMESSAGE.ZMESSAGETYPE NOT IN (6, 14, 15, 16, 17, 20, 23, 26)
             ORDER BY ZWAMESSAGE.ZMESSAGEDATE DESC
             LIMIT 5000
         """

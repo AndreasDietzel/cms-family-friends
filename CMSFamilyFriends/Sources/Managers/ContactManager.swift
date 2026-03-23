@@ -426,12 +426,12 @@ class ContactManager: ObservableObject {
 
     // MARK: - WhatsApp Status Cleanup
 
-    /// Löscht einmalig alle vorhandenen WhatsApp-Events und lässt lastContactDate
-    /// aus den verbleibenden Quellen neu berechnen.
-    /// Wird nur einmal ausgeführt (UserDefaults-Flag) und läuft vor dem nächsten WA-Sync,
-    /// der dann ausschließlich saubere Einträge importiert.
+    /// V2-Migration: Löscht alle vorhandenen WhatsApp-Events aus der DB und
+    /// lässt sie beim nächsten Sync sauber reimportieren (ohne Status-Stories).
+    /// Supersedes V1 – V1 lief, aber Status-Typen 23/26 und status@%-JIDs
+    /// wurden erst mit dem V2-Filter im WhatsAppService ausgeschlossen.
     private func performWhatsAppStatusCleanupIfNeeded(trackedContacts: [TrackedContact]) async {
-        let flagKey = "whatsappStatusCleanupV1Done"
+        let flagKey = "whatsappStatusCleanupV2Done"
         guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
         guard let modelContext else { return }
 
@@ -441,6 +441,9 @@ class ContactManager: ObservableObject {
                     predicate: #Predicate { $0.channelRawValue == "whatsapp" }
                 )
             )
+            // V1-Flag ebenfalls setzen, damit V1 nicht nochmals läuft
+            UserDefaults.standard.set(true, forKey: "whatsappStatusCleanupV1Done")
+
             guard !allWAEvents.isEmpty else {
                 UserDefaults.standard.set(true, forKey: flagKey)
                 return
@@ -449,20 +452,21 @@ class ContactManager: ObservableObject {
             // Betroffene Kontakte sammeln
             let affectedContacts = Set(allWAEvents.compactMap(\.contact))
 
-            // Alle WA-Events löschen
+            // Alle WA-Events löschen (inkl. bislang durchgerutschter Status-Events)
             for event in allWAEvents {
                 modelContext.delete(event)
             }
 
-            // lastContactDate aus verbleibenden Events neu berechnen
+            // lastContactDate aus verbleibenden direkten Kontakt-Events neu berechnen
+            let directChannels: Set<String> = ["phone", "facetime", "imessage", "reallife", "manual"]
             for contact in affectedContacts {
-                let remaining = contact.communicationEvents.filter { $0.channelRawValue != "whatsapp" }
+                let remaining = contact.communicationEvents.filter { directChannels.contains($0.channelRawValue) }
                 contact.lastContactDate = remaining.map(\.date).filter { $0 <= Date() }.max()
             }
 
             UserDefaults.standard.set(true, forKey: flagKey)
             AppLogger.contactOperation(
-                "WhatsApp-Status-Bereinigung: \(allWAEvents.count) Events entfernt, \(affectedContacts.count) Kontakte aktualisiert",
+                "WhatsApp V2-Bereinigung: \(allWAEvents.count) Events entfernt (inkl. Status-Stories), \(affectedContacts.count) Kontakte aktualisiert",
                 count: allWAEvents.count
             )
             // Sofort committen – damit das nachfolgende existingIds-Fetch
