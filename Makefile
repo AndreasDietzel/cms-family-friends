@@ -1,7 +1,7 @@
 # CMS Family & Friends – Build & Run without Xcode
 # Requires: Swift toolchain (comes with Xcode CLI tools: xcode-select --install)
 
-.PHONY: build run release clean install app
+.PHONY: build run release clean install app deploy-local
 
 # Debug build
 build:
@@ -52,6 +52,18 @@ install: app
 	cp -R CMSFamilyFriends.app /Applications/
 	@echo "✓ Installed to /Applications/CMS Family & Friends.app"
 
+# Build, install, restart and launch local app from /Applications
+deploy-local: app
+	@echo "Stopping running CMSFamilyFriends instances..."
+	@pkill -f "/Applications/CMSFamilyFriends.app/Contents/MacOS/CMSFamilyFriends" || true
+	@pkill -f "$$(pwd)/CMSFamilyFriends.app/Contents/MacOS/CMSFamilyFriends" || true
+	@echo "Installing app to /Applications..."
+	@rm -rf "/Applications/CMSFamilyFriends.app"
+	@cp -R "CMSFamilyFriends.app" "/Applications/"
+	@echo "Launching /Applications/CMSFamilyFriends.app..."
+	@open "/Applications/CMSFamilyFriends.app"
+	@echo "✓ deploy-local complete"
+
 # Clean build artifacts
 clean:
 	swift package clean
@@ -67,4 +79,5 @@ help:
 	@echo "  make run-release – Build & run (release)"
 	@echo "  make app         – Create .app bundle"
 	@echo "  make install     – Install to /Applications"
+	@echo "  make deploy-local – Build, install, restart & launch from /Applications"
 	@echo "  make clean       – Remove build artifacts"
