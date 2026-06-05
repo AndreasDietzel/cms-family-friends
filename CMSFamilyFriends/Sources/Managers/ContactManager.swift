@@ -218,19 +218,20 @@ class ContactManager: ObservableObject {
         // 3a. Einmalige Bereinigung alter WhatsApp-Status-Events
         await performWhatsAppStatusCleanupIfNeeded(trackedContacts: trackedContacts)
         
-        // 3a.2 Laufende Bereinigung: Alte auto-importierte WhatsApp-Events
-        //       vor jedem Sync entfernen und danach sauber neu importieren.
-        await performWhatsAppAutoRefreshCleanup(trackedContacts: trackedContacts)
-        
         // 3b. Einmalige Bereinigung von E-Mail- und Kalender-Events
         //     (werden nicht mehr synchronisiert – nur direkter Kontakt)
         await performEmailCalendarCleanupIfNeeded(trackedContacts: trackedContacts)
         
         // 4. Existierende sourceIdentifiers laden für Deduplizierung
-        //    (nach Bereinigung: sauber, keine gelöschten WA-IDs drin)
+        //    Nur Ereignisse innerhalb des Sync-Fensters prüfen (90 Tage) – spart
+        //    das Laden der gesamten, unbegrenzt wachsenden Event-History.
         let existingIds: Set<String>
         do {
-            let events = try modelContext.fetch(FetchDescriptor<CommunicationEvent>())
+            let cutoffDate = Date().addingTimeInterval(-90 * 86400)
+            let descriptor = FetchDescriptor<CommunicationEvent>(
+                predicate: #Predicate { $0.date > cutoffDate }
+            )
+            let events = try modelContext.fetch(descriptor)
             existingIds = Set(events.compactMap(\.sourceIdentifier))
         } catch {
             existingIds = []
@@ -380,6 +381,9 @@ class ContactManager: ObservableObject {
             AppLogger.syncFailed(source: .contacts, error: error)
         }
         
+        // 8. Täglich alte Events bereinigen, damit die DB nicht unbegrenzt wächst
+        await performOldEventsPruningIfNeeded()
+        
         lastSyncDate = Date()
         isSyncing = false
     }
@@ -482,45 +486,38 @@ class ContactManager: ObservableObject {
         }
     }
 
-    /// Löscht bei jedem Sync alle automatisch importierten WhatsApp-Events,
-    /// damit nur noch die aktuell gefilterten Direktkontakte sichtbar sind.
-    /// Manuelle WhatsApp-Einträge (isAutoDetected == false) bleiben erhalten.
-    private func performWhatsAppAutoRefreshCleanup(trackedContacts: [TrackedContact]) async {
+    /// Löscht einmal täglich Events, die älter als 180 Tage sind.
+    /// Hält die SwiftData-Datenbank schlank, ohne die Sync-Deduplizierung
+    /// (90-Tage-Fenster) zu beeinträchtigen. Manuelle Einträge (isAutoDetected == false)
+    /// werden grundsätzlich nicht gelöscht.
+    private func performOldEventsPruningIfNeeded() async {
+        let flagKey = "lastOldEventsPruningDate"
+        let lastPruning = UserDefaults.standard.object(forKey: flagKey) as? Date ?? .distantPast
+        guard Date().timeIntervalSince(lastPruning) > 86400 else { return }
         guard let modelContext else { return }
 
         do {
-            let allWAEvents = try modelContext.fetch(
-                FetchDescriptor<CommunicationEvent>(
-                    predicate: #Predicate { $0.channelRawValue == "whatsapp" }
-                )
+            let cutoffDate = Date().addingTimeInterval(-180 * 86400)
+            let descriptor = FetchDescriptor<CommunicationEvent>(
+                predicate: #Predicate { $0.date < cutoffDate && $0.isAutoDetected == true }
             )
-            // Robust filtern (in-memory), damit keine Predicate-Übersetzung zu false negatives führt.
-            // Importierte WA-Events erkennen wir an isAutoDetected oder sourceIdentifier mit Prefix "wa-".
-            let importedWAEvents = allWAEvents.filter {
-                $0.isAutoDetected || ($0.sourceIdentifier?.hasPrefix("wa-") ?? false)
+            let oldEvents = try modelContext.fetch(descriptor)
+            guard !oldEvents.isEmpty else {
+                UserDefaults.standard.set(Date(), forKey: flagKey)
+                return
             }
-            guard !importedWAEvents.isEmpty else { return }
 
-            let affectedContacts = Set(importedWAEvents.compactMap(\.contact))
-
-            for event in importedWAEvents {
+            for event in oldEvents {
                 modelContext.delete(event)
             }
-
-            // lastContactDate aus verbleibenden direkten Kontakt-Events neu berechnen
-            let directChannels: Set<String> = ["phone", "facetime", "imessage", "reallife", "manual", "whatsapp"]
-            for contact in affectedContacts {
-                let remaining = contact.communicationEvents.filter { directChannels.contains($0.channelRawValue) }
-                contact.lastContactDate = remaining.map(\.date).filter { $0 <= Date() }.max()
-            }
-
             try? modelContext.save()
+            UserDefaults.standard.set(Date(), forKey: flagKey)
             AppLogger.contactOperation(
-                "WhatsApp-Refresh: \(importedWAEvents.count) importierte Events entfernt (werden sauber neu importiert)",
-                count: importedWAEvents.count
+                "Alte Events bereinigt: \(oldEvents.count) Events älter als 180 Tage entfernt",
+                count: oldEvents.count
             )
         } catch {
-            AppLogger.syncFailed(source: .whatsapp, error: error)
+            AppLogger.syncFailed(source: .contacts, error: error)
         }
     }
 

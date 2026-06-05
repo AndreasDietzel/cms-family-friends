@@ -50,10 +50,11 @@ final class TrackedContact {
         [firstName, lastName].filter { !$0.isEmpty }.joined(separator: " ")
     }
     
-    /// Tage seit letztem Kontakt
+    /// Tage seit letztem Kontakt (optimiert: kein Calendar-Aufruf)
     var daysSinceLastContact: Int? {
         guard let lastContact = lastContactDate else { return nil }
-        return Calendar.current.dateComponents([.day], from: lastContact, to: Date()).day
+        let seconds = -lastContact.timeIntervalSinceNow
+        return seconds > 0 ? Int(seconds / 86400) : 0
     }
     
     /// Ist der Kontakt überfällig basierend auf effektivem Intervall?
@@ -63,12 +64,13 @@ final class TrackedContact {
         return days > interval
     }
     
-    /// Dringlichkeitslevel (0.0 - 1.0+)
+    /// Dringlichkeitslevel (0.0 - 1.0+) – optimiert ohne Calendar-Aufruf
     var urgencyLevel: Double {
-        guard let days = daysSinceLastContact,
+        guard let lastContact = lastContactDate,
               let interval = effectiveIntervalDays,
               interval > 0 else { return 0 }
-        return Double(days) / Double(interval)
+        let daysSince = max(0, -lastContact.timeIntervalSinceNow / 86400)
+        return daysSince / Double(interval)
     }
     
     /// Nächster Geburtstag

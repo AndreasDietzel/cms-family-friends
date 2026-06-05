@@ -50,11 +50,13 @@ struct ContactListView: View {
         case .lastContact:
             result.sort { ($0.lastContactDate ?? .distantPast) > ($1.lastContactDate ?? .distantPast) }
         case .urgency:
+            // urgencyLevel einmal pro Kontakt vorberechnen (O(n)) statt im Komparator (O(n log n))
+            let levels = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0.urgencyLevel) })
             result.sort {
                 // Nie kontaktierte Kontakte (kein lastContactDate) ganz nach oben
                 if $0.lastContactDate == nil && $1.lastContactDate != nil { return true }
                 if $0.lastContactDate != nil && $1.lastContactDate == nil { return false }
-                return $0.urgencyLevel > $1.urgencyLevel
+                return (levels[$0.id] ?? 0) > (levels[$1.id] ?? 0)
             }
         }
         
