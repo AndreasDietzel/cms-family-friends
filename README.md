@@ -15,7 +15,7 @@
   └──────────────────────────────────────────────────────┘
 ```
 
-**Automatisches Kontakt-Tracking für macOS** – Bleib mit deiner Familie und deinen Freunden in Verbindung, ohne manuell etwas zu dokumentieren.
+**Automatisches Kontakt-Tracking für macOS** – Bleib mit deiner Familie und deinen Freunden in Verbindung, ohne manuell etwas zu dokumentieren. Die App sammelt Kommunikationssignale aus Kalender, Telefon, iMessage, WhatsApp, Mail und FaceTime in einer nativen SwiftUI-Oberfläche. Sie erkennt automatisch, wann der letzte Kontakt zu wichtigen Personen stattgefunden hat, und bewertet Kontaktpausen anhand individueller Gruppenregeln. So bekommst du proaktive Erinnerungen für Beziehungen, die sonst im Alltag leicht untergehen.
 
 ## 🎯 Was ist CMS Family & Friends?
 

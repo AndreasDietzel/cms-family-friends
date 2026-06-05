@@ -225,6 +225,9 @@ class ContactManager: ObservableObject {
         // 4. Existierende sourceIdentifiers laden für Deduplizierung
         //    Nur Ereignisse innerhalb des Sync-Fensters prüfen (90 Tage) – spart
         //    das Laden der gesamten, unbegrenzt wachsenden Event-History.
+        //    Task.yield() vorher: UI-Events (z.B. Navigation) können verarbeitet
+        //    werden, bevor der synchrone DB-Fetch den Main Thread belegt.
+        await Task.yield()
         let existingIds: Set<String>
         do {
             let cutoffDate = Date().addingTimeInterval(-90 * 86400)
@@ -373,7 +376,9 @@ class ContactManager: ObservableObject {
             }
         }
         
-        // 7. Speichern
+        // 7. Speichern – Task.yield() sicherstellt, dass SwiftUI vor dem save()
+        //    einen Render-Pass ausführen kann (verhindert eingefrorene Navigation).
+        await Task.yield()
         do {
             try modelContext.save()
         } catch {

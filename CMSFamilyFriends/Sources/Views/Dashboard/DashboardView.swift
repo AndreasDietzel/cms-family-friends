@@ -1,6 +1,16 @@
 import SwiftUI
 import SwiftData
 
+/// FetchDescriptor für DashboardView.recentEvents mit fetchLimit.
+/// Als file-scope Konstante definiert, da @Query ein statisches Argument benötigt.
+private let recentEventsFetchDescriptor: FetchDescriptor<CommunicationEvent> = {
+    var d = FetchDescriptor<CommunicationEvent>(
+        sortBy: [SortDescriptor(\CommunicationEvent.date, order: .reverse)]
+    )
+    d.fetchLimit = 50
+    return d
+}()
+
 /// Dashboard-Hauptansicht mit Übersicht aller Kontakte
 struct DashboardView: View {
     @EnvironmentObject var contactManager: ContactManager
@@ -18,7 +28,10 @@ struct DashboardView: View {
     }
     
     @Query private var allGroups: [ContactGroup]
-    @Query(sort: \CommunicationEvent.date, order: .reverse)
+    // fetchLimit: maximal 50 Events laden – Dashboard zeigt nur prefix(10).
+    // Ohne Limit würden u.U. Zehntausende Events in den Speicher geladen,
+    // was beim Ansichtswechsel den SwiftData-Store unnötig belastet.
+    @Query(recentEventsFetchDescriptor)
     private var recentEvents: [CommunicationEvent]
     
     var body: some View {

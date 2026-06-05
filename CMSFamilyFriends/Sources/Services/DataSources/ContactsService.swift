@@ -40,14 +40,17 @@ actor ContactsService {
             throw ServiceError.notAuthorized("Kontakte-Zugriff nicht gewährt")
         }
         
+        // Nur Felder laden, die für das Kontakt-Matching im Sync benötigt werden.
+        // CNContactThumbnailImageDataKey bewusst NICHT enthalten – wird im Sync-Pfad
+        // nie verwendet, aber das Laden verursacht erheblichen Speicher- und Zeitaufwand
+        // bei Benutzern mit vielen Kontakten und Profilbildern.
         let keysToFetch: [CNKeyDescriptor] = [
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
             CNContactNicknameKey as CNKeyDescriptor,
             CNContactBirthdayKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
-            CNContactEmailAddressesKey as CNKeyDescriptor,
-            CNContactThumbnailImageDataKey as CNKeyDescriptor
+            CNContactEmailAddressesKey as CNKeyDescriptor
         ]
         
         let request = CNContactFetchRequest(keysToFetch: keysToFetch)
@@ -64,7 +67,7 @@ actor ContactsService {
                 birthday: birthday,
                 phoneNumbers: contact.phoneNumbers.map { $0.value.stringValue },
                 emailAddresses: contact.emailAddresses.map { $0.value as String },
-                imageData: contact.thumbnailImageData
+                imageData: nil
             )
             contacts.append(info)
         }
