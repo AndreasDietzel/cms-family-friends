@@ -52,6 +52,10 @@ class ContactManager: ObservableObject {
         AppLogger.syncStarted()
         
         Task {
+            // 3 Sekunden warten, damit SwiftUI vollständig gerendert hat
+            // und der Benutzer die UI sofort responsiv erlebt.
+            // Ohne Delay startet der Sync während der erste Render-Pass noch läuft.
+            try? await Task.sleep(for: .seconds(3))
             await checkDataSourceAvailability()
             await performSync()
         }
@@ -258,7 +262,11 @@ class ContactManager: ObservableObject {
             var phoneCount = 0
             var faceTimeCount = 0
             
-            for call in calls {
+            for (index, call) in calls.enumerated() {
+                // Periodisch yielden: Main Thread für UI-Events (z.B. Navigation)
+                // freigeben. Ohne yield läuft die gesamte Schleife (~100-5000
+                // Einträge) als ein ununterbrochener @MainActor-Block.
+                if index % 50 == 0 { await Task.yield() }
                 let sourceId = "call-\(call.identifier)"
                 guard !existingIds.contains(sourceId) else { continue }
                 guard let contact = matchContact(phone: call.phoneNumber, lookups: lookups) else { continue }
@@ -297,7 +305,8 @@ class ContactManager: ObservableObject {
             }
             var count = 0
             
-            for msg in messages {
+            for (index, msg) in messages.enumerated() {
+                if index % 50 == 0 { await Task.yield() }
                 let sourceId = "imsg-\(msg.rowId)"
                 guard !existingIds.contains(sourceId) else { continue }
                 guard let contact = matchContact(phone: msg.handleId, email: msg.handleId, lookups: lookups) else { continue }
@@ -329,7 +338,8 @@ class ContactManager: ObservableObject {
             }
             var count = 0
             
-            for msg in messages {
+            for (index, msg) in messages.enumerated() {
+                if index % 50 == 0 { await Task.yield() }
                 let sourceId = "wa-\(msg.messageId)"
                 guard !existingIds.contains(sourceId) else { continue }
                 guard let contact = matchContact(
