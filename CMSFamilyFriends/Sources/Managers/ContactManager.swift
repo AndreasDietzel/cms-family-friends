@@ -226,25 +226,39 @@ class ContactManager: ObservableObject {
         //     (werden nicht mehr synchronisiert – nur direkter Kontakt)
         await performEmailCalendarCleanupIfNeeded(trackedContacts: trackedContacts)
         
-        // 4. Existierende sourceIdentifiers laden für Deduplizierung
-        //    Nur Ereignisse innerhalb des Sync-Fensters prüfen (90 Tage) – spart
-        //    das Laden der gesamten, unbegrenzt wachsenden Event-History.
-        //    Task.yield() vorher: UI-Events (z.B. Navigation) können verarbeitet
-        //    werden, bevor der synchrone DB-Fetch den Main Thread belegt.
+        // 4. Sync-Fenster bestimmen: seit letztem Sync (+ 1 Tag Puffer) oder
+        //    90 Tage beim allerersten Sync. Dadurch liefern die Services nur noch
+        //    die wenigen wirklich neuen Events statt bis zu 5.000 Einträge aus
+        //    90 Tagen, die sowieso fast alle bereits importiert wurden.
+        let syncDaysPast: Int
+        let idCutoffDate: Date
+        if let lastSync = lastSyncDate {
+            // +1 Tag Puffer gegen Clock-Skew und Sync-Boundary-Randfälle
+            let daysSince = max(1, Int(Date().timeIntervalSince(lastSync) / 86400) + 1)
+            syncDaysPast = min(daysSince, 90)
+            // existingIds: gleicher Zeitraum + 5 Minuten extra Puffer
+            idCutoffDate = lastSync.addingTimeInterval(-300)
+        } else {
+            syncDaysPast = 90
+            idCutoffDate = Date().addingTimeInterval(-90 * 86400)
+        }
+
+        // 5. Existierende sourceIdentifiers nur für das Sync-Fenster laden.
+        //    Beim täglichen Sync (z.B. alle 30 Min) sind das typischerweise
+        //    < 20 Events statt Tausende aus dem vollen 90-Tage-Fenster.
         await Task.yield()
         let existingIds: Set<String>
         do {
-            let cutoffDate = Date().addingTimeInterval(-90 * 86400)
             let descriptor = FetchDescriptor<CommunicationEvent>(
-                predicate: #Predicate { $0.date > cutoffDate }
+                predicate: #Predicate { $0.date > idCutoffDate }
             )
             let events = try modelContext.fetch(descriptor)
             existingIds = Set(events.compactMap(\.sourceIdentifier))
         } catch {
             existingIds = []
         }
-        
-        // 5. Letztes Kontaktdatum pro Kontakt tracken
+
+        // 6. Letztes Kontaktdatum pro Kontakt tracken
         var latestDates: [UUID: Date] = [:]
         for contact in trackedContacts {
             if let date = contact.lastContactDate {
@@ -252,12 +266,12 @@ class ContactManager: ObservableObject {
             }
         }
         
-        // 6. Events aus allen Quellen importieren
+        // 7. Events aus allen Quellen importieren
         
         // --- Telefon & FaceTime ---
         do {
             let calls = try await withTimeout(seconds: 15) {
-                try await self.callHistoryService.fetchRecentCalls()
+                try await self.callHistoryService.fetchRecentCalls(daysPast: syncDaysPast)
             }
             var phoneCount = 0
             var faceTimeCount = 0
@@ -301,7 +315,7 @@ class ContactManager: ObservableObject {
         // --- iMessage ---
         do {
             let messages = try await withTimeout(seconds: 15) {
-                try await self.messageService.fetchRecentMessages()
+                try await self.messageService.fetchRecentMessages(daysPast: syncDaysPast)
             }
             var count = 0
             
@@ -334,7 +348,7 @@ class ContactManager: ObservableObject {
         // --- WhatsApp ---
         do {
             let messages = try await withTimeout(seconds: 15) {
-                try await self.whatsAppService.fetchRecentMessages()
+                try await self.whatsAppService.fetchRecentMessages(daysPast: syncDaysPast)
             }
             var count = 0
             
@@ -368,7 +382,7 @@ class ContactManager: ObservableObject {
             handleSyncError(.whatsapp, error)
         }
         
-        // 6. lastContactDate für alle Kontakte aktualisieren
+        // 7. lastContactDate für alle Kontakte aktualisieren
         let now = Date()
         for contact in trackedContacts {
             // Korrupte Zukunftsdaten zurücksetzen (z.B. durch fehlerhafte Timestamp-Interpretation)
@@ -386,7 +400,7 @@ class ContactManager: ObservableObject {
             }
         }
         
-        // 7. Speichern – Task.yield() sicherstellt, dass SwiftUI vor dem save()
+        // 8. Speichern – Task.yield() sicherstellt, dass SwiftUI vor dem save()
         //    einen Render-Pass ausführen kann (verhindert eingefrorene Navigation).
         await Task.yield()
         do {
@@ -396,7 +410,7 @@ class ContactManager: ObservableObject {
             AppLogger.syncFailed(source: .contacts, error: error)
         }
         
-        // 8. Täglich alte Events bereinigen, damit die DB nicht unbegrenzt wächst
+        // 9. Täglich alte Events bereinigen, damit die DB nicht unbegrenzt wächst
         await performOldEventsPruningIfNeeded()
         
         lastSyncDate = Date()
