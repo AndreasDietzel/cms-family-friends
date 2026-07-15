@@ -247,7 +247,7 @@ class ContactManager: ObservableObject {
         //    Beim täglichen Sync (z.B. alle 30 Min) sind das typischerweise
         //    < 20 Events statt Tausende aus dem vollen 90-Tage-Fenster.
         await Task.yield()
-        let existingIds: Set<String>
+        var existingIds: Set<String>
         do {
             let descriptor = FetchDescriptor<CommunicationEvent>(
                 predicate: #Predicate { $0.date > idCutoffDate }
@@ -296,6 +296,7 @@ class ContactManager: ObservableObject {
                 )
                 event.contact = contact
                 modelContext.insert(event)
+                existingIds.insert(sourceId)
                 
                 if call.isFaceTime { faceTimeCount += 1 } else { phoneCount += 1 }
                 updateLatestDate(&latestDates, contactId: contact.id, date: call.date)
@@ -334,6 +335,7 @@ class ContactManager: ObservableObject {
                 )
                 event.contact = contact
                 modelContext.insert(event)
+                existingIds.insert(sourceId)
                 count += 1
                 updateLatestDate(&latestDates, contactId: contact.id, date: msg.date)
             }
@@ -371,6 +373,7 @@ class ContactManager: ObservableObject {
                 )
                 event.contact = contact
                 modelContext.insert(event)
+                existingIds.insert(sourceId)
                 count += 1
                 updateLatestDate(&latestDates, contactId: contact.id, date: msg.date)
             }

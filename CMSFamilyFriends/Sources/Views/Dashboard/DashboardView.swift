@@ -7,9 +7,31 @@ private let recentEventsFetchDescriptor: FetchDescriptor<CommunicationEvent> = {
     var d = FetchDescriptor<CommunicationEvent>(
         sortBy: [SortDescriptor(\CommunicationEvent.date, order: .reverse)]
     )
-    d.fetchLimit = 50
+    d.fetchLimit = 200
     return d
 }()
+
+private struct RecentActivityCluster: Identifiable {
+    struct Key: Hashable {
+        let day: Date
+        let contactId: UUID?
+        let contactName: String
+        let channel: CommunicationChannel
+    }
+
+    let key: Key
+    let latestEvent: CommunicationEvent
+    let count: Int
+    let direction: CommunicationDirection
+
+    var id: String {
+        [
+            key.day.ISO8601Format(),
+            key.contactId?.uuidString ?? key.contactName,
+            key.channel.rawValue
+        ].joined(separator: "|")
+    }
+}
 
 /// Dashboard-Hauptansicht mit Übersicht aller Kontakte
 struct DashboardView: View {
@@ -33,6 +55,40 @@ struct DashboardView: View {
     // was beim Ansichtswechsel den SwiftData-Store unnötig belastet.
     @Query(recentEventsFetchDescriptor)
     private var recentEvents: [CommunicationEvent]
+
+    private var recentActivityClusters: [RecentActivityCluster] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: recentEvents) { event in
+            RecentActivityCluster.Key(
+                day: calendar.startOfDay(for: event.date),
+                contactId: event.contact?.id,
+                contactName: event.contact?.fullName ?? "Unbekannt",
+                channel: event.channel
+            )
+        }
+
+        return grouped.values
+            .compactMap { events in
+                guard let latestEvent = events.max(by: { $0.date < $1.date }) else { return nil }
+                let directions = Set(events.map(\.direction))
+                let direction: CommunicationDirection = directions.count == 1
+                    ? (directions.first ?? .unknown)
+                    : .mutual
+
+                return RecentActivityCluster(
+                    key: RecentActivityCluster.Key(
+                        day: calendar.startOfDay(for: latestEvent.date),
+                        contactId: latestEvent.contact?.id,
+                        contactName: latestEvent.contact?.fullName ?? "Unbekannt",
+                        channel: latestEvent.channel
+                    ),
+                    latestEvent: latestEvent,
+                    count: events.count,
+                    direction: direction
+                )
+            }
+            .sorted { $0.latestEvent.date > $1.latestEvent.date }
+    }
     
     var body: some View {
         ScrollView {
@@ -224,31 +280,38 @@ struct DashboardView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            if recentEvents.isEmpty {
+            if recentActivityClusters.isEmpty {
                 Text("Wird nach dem ersten Sync angezeigt...")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(recentEvents.prefix(10), id: \.id) { event in
+                ForEach(recentActivityClusters.prefix(10)) { cluster in
                     HStack {
-                        Image(systemName: channelIcon(event.channel))
+                        Image(systemName: channelIcon(cluster.latestEvent.channel))
                             .foregroundStyle(.blue)
                             .frame(width: 20)
                         VStack(alignment: .leading) {
-                            Text(event.contact?.fullName ?? "Unbekannt")
+                            Text(cluster.latestEvent.contact?.fullName ?? "Unbekannt")
                                 .fontWeight(.medium)
                             HStack(spacing: 6) {
-                                Text(event.channel.displayName)
+                                Text(cluster.latestEvent.channel.displayName)
                                     .font(.caption)
                                     .foregroundStyle(.blue)
                                 Text("·")
                                     .foregroundStyle(.secondary)
-                                Text(event.date.relativeString)
+                                Text(cluster.latestEvent.date.relativeString)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                if cluster.count > 1 {
+                                    Text("·")
+                                        .foregroundStyle(.secondary)
+                                    Text("\(cluster.count)x an diesem Tag")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                         Spacer()
-                        Text(event.direction.displayName)
+                        Text(cluster.direction.displayName)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

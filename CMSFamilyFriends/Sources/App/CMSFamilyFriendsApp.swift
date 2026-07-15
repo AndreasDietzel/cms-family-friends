@@ -18,6 +18,7 @@ struct CMSFamilyFriendsApp: App {
         // Datenbank vor SwiftData bereinigen
         Self.migrateRemoveReminders()
         Self.migrateFixWhatsAppTimestamps()
+        Self.migrateRemoveDuplicateCommunicationEvents()
         
         do {
             let schema = Schema([
@@ -112,6 +113,37 @@ struct CMSFamilyFriendsApp: App {
         sqlite3_exec(db, fixContacts, nil, nil, nil)
         
         UserDefaults.standard.set(true, forKey: "didFixWhatsAppTimestamps")
+    }
+
+    /// Entfernt einmalig doppelte CommunicationEvents mit identischer sourceIdentifier.
+    /// Relevant für alte Syncs, in denen dieselbe Quellnachricht innerhalb eines Laufs
+    /// mehrfach importiert werden konnte.
+    private static func migrateRemoveDuplicateCommunicationEvents() {
+        guard !UserDefaults.standard.bool(forKey: "didRemoveDuplicateCommunicationEvents") else { return }
+
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dbPath = appSupport.appendingPathComponent("CMSFamilyFriends/CMSFamilyFriends.store").path
+
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+
+        var db: OpaquePointer?
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+
+        let deleteDuplicatesSQL = """
+            DELETE FROM ZCOMMUNICATIONEVENT
+            WHERE Z_PK IN (
+                SELECT duplicate.Z_PK
+                FROM ZCOMMUNICATIONEVENT duplicate
+                JOIN ZCOMMUNICATIONEVENT original
+                  ON duplicate.ZSOURCEIDENTIFIER = original.ZSOURCEIDENTIFIER
+                 AND duplicate.Z_PK > original.Z_PK
+                WHERE duplicate.ZSOURCEIDENTIFIER IS NOT NULL
+            )
+        """
+
+        sqlite3_exec(db, deleteDuplicatesSQL, nil, nil, nil)
+        UserDefaults.standard.set(true, forKey: "didRemoveDuplicateCommunicationEvents")
     }
     
     var body: some Scene {

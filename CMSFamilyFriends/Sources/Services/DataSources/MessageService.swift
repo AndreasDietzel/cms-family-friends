@@ -45,18 +45,16 @@ actor MessageService {
         // Privacy by Design: Kein Nachrichtentext (m.text) abfragen – nur Metadaten
         // item_type = 0: nur echte Nachrichten (keine Gruppenereignisse / System-Messages)
         // is_empty = 0: leere Nachrichten (Lesebestätigungen, Status-Events) ausschließen
-        let query = """
-            SELECT m.ROWID, m.date, m.is_from_me, h.id, c.display_name
-            FROM message m
-            LEFT JOIN handle h ON m.handle_id = h.ROWID
-            LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
-            LEFT JOIN chat c ON cmj.chat_id = c.ROWID
-            WHERE m.date > ?
-              AND m.item_type = 0
-              AND m.is_empty = 0
-            ORDER BY m.date DESC
-            LIMIT 5000
-        """
+                let query = """
+                        SELECT DISTINCT m.ROWID, m.date, m.is_from_me, h.id
+                        FROM message m
+                        LEFT JOIN handle h ON m.handle_id = h.ROWID
+                        WHERE m.date > ?
+                            AND m.item_type = 0
+                            AND m.is_empty = 0
+                        ORDER BY m.date DESC
+                        LIMIT 5000
+                """
         
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
@@ -72,7 +70,6 @@ actor MessageService {
             let dateNano = sqlite3_column_int64(statement, 1)
             let isFromMe = sqlite3_column_int(statement, 2) == 1
             let handleId = sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? ""
-            let chatName = sqlite3_column_text(statement, 4).map { String(cString: $0) }
             
             let date = Date(timeIntervalSinceReferenceDate: Double(dateNano) / 1_000_000_000)
             
@@ -81,7 +78,7 @@ actor MessageService {
                 date: date,
                 isFromMe: isFromMe,
                 handleId: handleId,
-                chatName: chatName
+                chatName: nil
             ))
         }
         
