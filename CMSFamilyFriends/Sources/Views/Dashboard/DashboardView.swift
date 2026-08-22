@@ -50,13 +50,17 @@ struct DashboardView: View {
     }
     
     @Query private var allGroups: [ContactGroup]
-    // fetchLimit: maximal 50 Events laden – Dashboard zeigt nur prefix(10).
+    // fetchLimit: maximal 200 Events laden – Dashboard zeigt nur prefix(10).
     // Ohne Limit würden u.U. Zehntausende Events in den Speicher geladen,
     // was beim Ansichtswechsel den SwiftData-Store unnötig belastet.
     @Query(recentEventsFetchDescriptor)
     private var recentEvents: [CommunicationEvent]
 
-    private var recentActivityClusters: [RecentActivityCluster] {
+    /// Gecachte Cluster – werden nur bei Änderung von recentEvents neu berechnet,
+    /// nicht bei jedem SwiftUI-Render-Pass (Dictionary-Grouping über 200 Events).
+    @State private var cachedClusters: [RecentActivityCluster] = []
+
+    private func buildClusters() -> [RecentActivityCluster] {
         let calendar = Calendar.current
         let grouped = Dictionary(grouping: recentEvents) { event in
             RecentActivityCluster.Key(
@@ -91,6 +95,9 @@ struct DashboardView: View {
     }
     
     var body: some View {
+        // filteredContacts einmalig berechnen – wird in overdueSection und
+        // birthdaySection verwendet, damit der Filter nicht 2x pro Render läuft.
+        let contacts = filteredContacts
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Sync-Fehler Banner
@@ -102,10 +109,10 @@ struct DashboardView: View {
                 headerSection
                 
                 // Überfällige Kontakte
-                overdueSection
+                overdueSection(contacts)
                 
                 // Anstehende Geburtstage
-                birthdaySection
+                birthdaySection(contacts)
                 
                 // Gruppenübersicht
                 groupOverviewSection
@@ -115,6 +122,8 @@ struct DashboardView: View {
             }
             .padding()
         }
+        .task { cachedClusters = buildClusters() }
+        .onChange(of: recentEvents) { _, _ in cachedClusters = buildClusters() }
     }
     
     // MARK: - Sync Error Banner
@@ -180,14 +189,14 @@ struct DashboardView: View {
     }
     
     // MARK: - Überfällige Kontakte
-    private var overdueSection: some View {
+    private func overdueSection(_ contacts: [TrackedContact]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Überfällige Kontakte", systemImage: "exclamationmark.triangle.fill")
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.red)
             
-            let overdue = filteredContacts.filter(\.isOverdue)
+            let overdue = contacts.filter(\.isOverdue)
             
             if overdue.isEmpty {
                 ContentUnavailableView(
@@ -212,14 +221,14 @@ struct DashboardView: View {
     }
     
     // MARK: - Geburtstage
-    private var birthdaySection: some View {
+    private func birthdaySection(_ contacts: [TrackedContact]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Anstehende Geburtstage", systemImage: "gift.fill")
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.orange)
             
-            let upcoming = filteredContacts
+            let upcoming = contacts
                 .filter { ($0.daysUntilBirthday ?? Int.max) <= 30 }
                 .sorted { ($0.daysUntilBirthday ?? 999) < ($1.daysUntilBirthday ?? 999) }
             
@@ -280,11 +289,11 @@ struct DashboardView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            if recentActivityClusters.isEmpty {
+            if cachedClusters.isEmpty {
                 Text("Wird nach dem ersten Sync angezeigt...")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(recentActivityClusters.prefix(10)) { cluster in
+                ForEach(cachedClusters.prefix(10)) { cluster in
                     HStack {
                         Image(systemName: channelIcon(cluster.latestEvent.channel))
                             .foregroundStyle(.blue)

@@ -1,12 +1,13 @@
 import Foundation
 import Contacts
-import EventKit
 import Combine
 import SwiftData
 import os.log
 
-/// Zentrale Manager-Klasse für Kontakt-Tracking
-/// ISO 25010: Logging statt print(), Rate-Limiting, Graceful Degradation, dynamischer Status
+/// Zentrale Manager-Klasse für Kontakt-Tracking.
+/// Hält ausschließlich UI-State (@Published). Alle schweren DB-Operationen
+/// laufen via SyncActor off-main-thread – die Navigation bleibt jederzeit
+/// reaktionsfähig, auch während ein Sync läuft.
 @MainActor
 class ContactManager: ObservableObject {
     // MARK: - Published Properties
@@ -16,50 +17,58 @@ class ContactManager: ObservableObject {
     @Published var isSyncing = false
     @Published var dataSourceStatuses: [DataSource: DataSourceStatus] = [:]
     @Published var lastSyncResults: [DataSource: Int] = [:]
-    
-    /// SwiftData ModelContext – muss von einer View gesetzt werden
-    var modelContext: ModelContext?
-    
-    // MARK: - Data Source Services
-    // Hinweis: CalendarService und MailService nicht mehr verwendet –
-    // Es werden ausschließlich direkte Kontakte (Chat, Telefon, Video) synchronisiert.
+
+    // MARK: - Services (actors – thread-safe, Sendable)
     private let contactsService = ContactsService()
     private let messageService = MessageService()
     private let callHistoryService = CallHistoryService()
     private let whatsAppService = WhatsAppService()
+
+    // MARK: - Background Sync
+    private var syncActor: SyncActor?
     
-    // MARK: - Tracking Timer & Rate-Limiting
+    // MARK: - Timer & Rate-Limiting
     private var syncTimer: Timer?
     private var lastSyncStartTime: Date?
     private let minimumSyncIntervalSeconds: TimeInterval = 60
-    
+
     var syncIntervalMinutes: Double {
         Double(max(15, min(120, UserDefaults.standard.integer(forKey: "syncIntervalMinutes"))))
     }
-    
+
     // MARK: - Lifecycle
-    
+
     init() {
         for source in DataSource.allCases {
             dataSourceStatuses[source] = .checking
         }
     }
-    
+
+    /// ModelContainer übergeben (einmalig aus ContentView).
+    /// Erstellt den SyncActor mit eigenem Background-ModelContext.
+    func setContainer(_ container: ModelContainer) {
+        guard syncActor == nil else { return }
+        syncActor = SyncActor(
+            modelContainer: container,
+            messageService: messageService,
+            callHistoryService: callHistoryService,
+            whatsAppService: whatsAppService,
+            contactsService: contactsService
+        )
+    }
+
     /// Startet das automatische Tracking
     func startTracking() {
         guard !isTracking else { return }
         isTracking = true
         AppLogger.syncStarted()
-        
         Task {
-            // 3 Sekunden warten, damit SwiftUI vollständig gerendert hat
-            // und der Benutzer die UI sofort responsiv erlebt.
-            // Ohne Delay startet der Sync während der erste Render-Pass noch läuft.
+            // Kurz warten: SwiftUI beendet seinen ersten Render-Pass,
+            // bevor der erste Sync startet.
             try? await Task.sleep(for: .seconds(3))
             await checkDataSourceAvailability()
             await performSync()
         }
-        
         let interval = max(syncIntervalMinutes, 15) * 60
         syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -67,540 +76,76 @@ class ContactManager: ObservableObject {
             }
         }
     }
-    
+
     /// Stoppt das Tracking
     func stopTracking() {
         isTracking = false
         syncTimer?.invalidate()
         syncTimer = nil
     }
-    
-    // MARK: - Data Source Availability Check
-    
+
+    // MARK: - Data Source Availability
+
     func checkDataSourceAvailability() async {
-        // E-Mail und Kalender werden nicht mehr synchronisiert (nur direkter Kontakt)
         dataSourceStatuses[.email] = .disabled
         dataSourceStatuses[.calendar] = .disabled
         dataSourceStatuses[.contacts] = .checking
-        
         let messageAccess = await messageService.checkAccess()
         dataSourceStatuses[.imessage] = messageAccess ? .connected : .needsAccess
-        
         let whatsAppAccess = await whatsAppService.checkAccess()
         dataSourceStatuses[.whatsapp] = whatsAppAccess ? .connected : .unavailable(reason: "Nicht installiert")
-        
         let callAccess = await callHistoryService.checkAccess()
         dataSourceStatuses[.phone] = callAccess ? .connected : .needsAccess
         dataSourceStatuses[.facetime] = callAccess ? .connected : .needsAccess
     }
-    
-    // MARK: - Contact Lookup
-    
-    /// Lookup-Tabelle für schnelles Matching: Phone/Email/Name → TrackedContact
-    private struct ContactLookupTable {
-        var byPhone: [String: TrackedContact] = [:]
-        var byEmail: [String: TrackedContact] = [:]
-        var byName: [String: TrackedContact] = [:]
-    }
-    
-    /// Telefonnummer für Matching normalisieren (letzte 10 Ziffern)
-    private func normalizePhone(_ number: String) -> String {
-        let digits = number.filter(\.isNumber)
-        if digits.count > 10 {
-            return String(digits.suffix(10))
-        }
-        return digits
-    }
-    
-    /// Lookup-Tabelle aufbauen: TrackedContacts → Apple Contacts → Phone/Email Mapping
-    private func buildLookups(trackedContacts: [TrackedContact]) async -> ContactLookupTable {
-        var lookups = ContactLookupTable()
-        
-        // Name-basiertes Matching für alle Kontakte
-        for contact in trackedContacts {
-            let key = "\(contact.firstName) \(contact.lastName)".lowercased().trimmingCharacters(in: .whitespaces)
-            if !key.isEmpty && key != " " {
-                lookups.byName[key] = contact
-            }
-        }
-        
-        // Phone/Email via Apple Contacts
-        do {
-            let appleContacts = try await contactsService.fetchAllContacts()
-            dataSourceStatuses[.contacts] = .connected
-            lastSyncResults[.contacts] = appleContacts.count
-            AppLogger.syncCompleted(source: .contacts, itemCount: appleContacts.count)
-            
-            for tracked in trackedContacts {
-                guard let appleId = tracked.appleContactIdentifier else { continue }
-                guard let apple = appleContacts.first(where: { $0.identifier == appleId }) else { continue }
-                
-                for phone in apple.phoneNumbers {
-                    let normalized = normalizePhone(phone)
-                    if !normalized.isEmpty {
-                        lookups.byPhone[normalized] = tracked
-                    }
-                }
-                for email in apple.emailAddresses {
-                    lookups.byEmail[email.lowercased()] = tracked
-                }
-            }
-        } catch {
-            syncErrors.append(SyncError(source: .contacts, message: error.localizedDescription))
-            if let serviceError = error as? ServiceError {
-                switch serviceError {
-                case .notAuthorized: dataSourceStatuses[.contacts] = .needsAccess
-                default: dataSourceStatuses[.contacts] = .unavailable(reason: "Fehler")
-                }
-            }
-            AppLogger.syncFailed(source: .contacts, error: error)
-        }
-        
-        return lookups
-    }
-    
-    /// Kontakt per Phone, Email oder Name matchen
-    private func matchContact(phone: String? = nil, email: String? = nil, name: String? = nil, lookups: ContactLookupTable) -> TrackedContact? {
-        if let phone, !phone.isEmpty {
-            let normalized = normalizePhone(phone)
-            if !normalized.isEmpty, let contact = lookups.byPhone[normalized] {
-                return contact
-            }
-        }
-        if let email, !email.isEmpty {
-            if let contact = lookups.byEmail[email.lowercased()] {
-                return contact
-            }
-        }
-        if let name, !name.isEmpty {
-            if let contact = lookups.byName[name.lowercased()] {
-                return contact
-            }
-        }
-        return nil
-    }
-    
-    // MARK: - Sync (mit Event-Import, Matching & Deduplizierung)
-    
+
+    // MARK: - Sync
+
     func performSync() async {
         if let lastStart = lastSyncStartTime,
-           Date().timeIntervalSince(lastStart) < minimumSyncIntervalSeconds {
-            return
-        }
-        
+           Date().timeIntervalSince(lastStart) < minimumSyncIntervalSeconds { return }
         guard !isSyncing else { return }
+        guard let syncActor else { return }
+
         isSyncing = true
         lastSyncStartTime = Date()
         syncErrors.removeAll()
         lastSyncResults.removeAll()
-        
         AppLogger.syncStarted()
-        
-        guard let modelContext else {
-            isSyncing = false
-            return
-        }
-        
-        // 1. Alle TrackedContacts laden
-        let trackedContacts: [TrackedContact]
-        do {
-            trackedContacts = try modelContext.fetch(FetchDescriptor<TrackedContact>())
-        } catch {
-            isSyncing = false
-            return
-        }
-        
-        guard !trackedContacts.isEmpty else {
-            isSyncing = false
-            lastSyncDate = Date()
-            return
-        }
-        
-        // 2. Lookup-Tabelle aufbauen (Phone/Email/Name → TrackedContact)
-        let lookups = await buildLookups(trackedContacts: trackedContacts)
-        
-        // 3a. Einmalige Bereinigung alter WhatsApp-Status-Events
-        await performWhatsAppStatusCleanupIfNeeded(trackedContacts: trackedContacts)
-        
-        // 3b. Einmalige Bereinigung von E-Mail- und Kalender-Events
-        //     (werden nicht mehr synchronisiert – nur direkter Kontakt)
-        await performEmailCalendarCleanupIfNeeded(trackedContacts: trackedContacts)
-        
-        // 4. Sync-Fenster bestimmen: seit letztem Sync (+ 1 Tag Puffer) oder
-        //    90 Tage beim allerersten Sync. Dadurch liefern die Services nur noch
-        //    die wenigen wirklich neuen Events statt bis zu 5.000 Einträge aus
-        //    90 Tagen, die sowieso fast alle bereits importiert wurden.
+
+        // Sync-Fenster bestimmen
         let syncDaysPast: Int
         let idCutoffDate: Date
         if let lastSync = lastSyncDate {
-            // +1 Tag Puffer gegen Clock-Skew und Sync-Boundary-Randfälle
             let daysSince = max(1, Int(Date().timeIntervalSince(lastSync) / 86400) + 1)
             syncDaysPast = min(daysSince, 90)
-            // existingIds: gleicher Zeitraum + 5 Minuten extra Puffer
             idCutoffDate = lastSync.addingTimeInterval(-300)
         } else {
             syncDaysPast = 90
             idCutoffDate = Date().addingTimeInterval(-90 * 86400)
         }
 
-        // 5. Existierende sourceIdentifiers nur für das Sync-Fenster laden.
-        //    Beim täglichen Sync (z.B. alle 30 Min) sind das typischerweise
-        //    < 20 Events statt Tausende aus dem vollen 90-Tage-Fenster.
-        await Task.yield()
-        var existingIds: Set<String>
-        do {
-            let descriptor = FetchDescriptor<CommunicationEvent>(
-                predicate: #Predicate { $0.date > idCutoffDate }
-            )
-            let events = try modelContext.fetch(descriptor)
-            existingIds = Set(events.compactMap(\.sourceIdentifier))
-        } catch {
-            existingIds = []
-        }
+        // Gesamter Sync läuft off-main-thread im SyncActor
+        let result = await syncActor.performSync(
+            syncDaysPast: syncDaysPast,
+            idCutoffDate: idCutoffDate
+        )
 
-        // 6. Letztes Kontaktdatum pro Kontakt tracken
-        var latestDates: [UUID: Date] = [:]
-        for contact in trackedContacts {
-            if let date = contact.lastContactDate {
-                latestDates[contact.id] = date
-            }
+        // UI-State auf @MainActor aktualisieren
+        syncErrors = result.errors
+        for (source, status) in result.statuses {
+            dataSourceStatuses[source] = status
         }
-        
-        // 7. Events aus allen Quellen importieren
-        
-        // --- Telefon & FaceTime ---
-        do {
-            let calls = try await withTimeout(seconds: 15) {
-                try await self.callHistoryService.fetchRecentCalls(daysPast: syncDaysPast)
-            }
-            var phoneCount = 0
-            var faceTimeCount = 0
-            
-            for (index, call) in calls.enumerated() {
-                // Periodisch yielden: Main Thread für UI-Events (z.B. Navigation)
-                // freigeben. Ohne yield läuft die gesamte Schleife (~100-5000
-                // Einträge) als ein ununterbrochener @MainActor-Block.
-                if index % 50 == 0 { await Task.yield() }
-                let sourceId = "call-\(call.identifier)"
-                guard !existingIds.contains(sourceId) else { continue }
-                guard let contact = matchContact(phone: call.phoneNumber, lookups: lookups) else { continue }
-                
-                let channel: CommunicationChannel = call.isFaceTime ? .facetime : .phone
-                let event = CommunicationEvent(
-                    channel: channel,
-                    direction: call.isOutgoing ? .outgoing : .incoming,
-                    date: call.date,
-                    durationSeconds: Int(call.duration),
-                    isAutoDetected: true,
-                    sourceIdentifier: sourceId
-                )
-                event.contact = contact
-                modelContext.insert(event)
-                existingIds.insert(sourceId)
-                
-                if call.isFaceTime { faceTimeCount += 1 } else { phoneCount += 1 }
-                updateLatestDate(&latestDates, contactId: contact.id, date: call.date)
-            }
-            
-            lastSyncResults[.phone] = phoneCount
-            lastSyncResults[.facetime] = faceTimeCount
-            dataSourceStatuses[.phone] = .connected
-            dataSourceStatuses[.facetime] = .connected
-            AppLogger.syncCompleted(source: .phone, itemCount: phoneCount)
-            AppLogger.syncCompleted(source: .facetime, itemCount: faceTimeCount)
-        } catch {
-            handleSyncError(.phone, error)
-            handleSyncError(.facetime, error)
+        for (source, count) in result.counts {
+            lastSyncResults[source] = count
         }
-        
-        // --- iMessage ---
-        do {
-            let messages = try await withTimeout(seconds: 15) {
-                try await self.messageService.fetchRecentMessages(daysPast: syncDaysPast)
-            }
-            var count = 0
-            
-            for (index, msg) in messages.enumerated() {
-                if index % 50 == 0 { await Task.yield() }
-                let sourceId = "imsg-\(msg.rowId)"
-                guard !existingIds.contains(sourceId) else { continue }
-                guard let contact = matchContact(phone: msg.handleId, email: msg.handleId, lookups: lookups) else { continue }
-                
-                let event = CommunicationEvent(
-                    channel: .imessage,
-                    direction: msg.isFromMe ? .outgoing : .incoming,
-                    date: msg.date,
-                    isAutoDetected: true,
-                    sourceIdentifier: sourceId
-                )
-                event.contact = contact
-                modelContext.insert(event)
-                existingIds.insert(sourceId)
-                count += 1
-                updateLatestDate(&latestDates, contactId: contact.id, date: msg.date)
-            }
-            
-            lastSyncResults[.imessage] = count
-            dataSourceStatuses[.imessage] = .connected
-            AppLogger.syncCompleted(source: .imessage, itemCount: count)
-        } catch {
-            handleSyncError(.imessage, error)
-        }
-        
-        // --- WhatsApp ---
-        do {
-            let messages = try await withTimeout(seconds: 15) {
-                try await self.whatsAppService.fetchRecentMessages(daysPast: syncDaysPast)
-            }
-            var count = 0
-            
-            for (index, msg) in messages.enumerated() {
-                if index % 50 == 0 { await Task.yield() }
-                let sourceId = "wa-\(msg.messageId)"
-                guard !existingIds.contains(sourceId) else { continue }
-                guard let contact = matchContact(
-                    phone: msg.contactNumber,
-                    name: msg.contactName,
-                    lookups: lookups
-                ) else { continue }
-                
-                let event = CommunicationEvent(
-                    channel: .whatsapp,
-                    direction: msg.isFromMe ? .outgoing : .incoming,
-                    date: msg.date,
-                    isAutoDetected: true,
-                    sourceIdentifier: sourceId
-                )
-                event.contact = contact
-                modelContext.insert(event)
-                existingIds.insert(sourceId)
-                count += 1
-                updateLatestDate(&latestDates, contactId: contact.id, date: msg.date)
-            }
-            
-            lastSyncResults[.whatsapp] = count
-            dataSourceStatuses[.whatsapp] = .connected
-            AppLogger.syncCompleted(source: .whatsapp, itemCount: count)
-        } catch {
-            handleSyncError(.whatsapp, error)
-        }
-        
-        // 7. lastContactDate für alle Kontakte aktualisieren
-        let now = Date()
-        for contact in trackedContacts {
-            // Korrupte Zukunftsdaten zurücksetzen (z.B. durch fehlerhafte Timestamp-Interpretation)
-            if let existing = contact.lastContactDate, existing > now {
-                contact.lastContactDate = nil
-            }
-            if let latestDate = latestDates[contact.id], latestDate <= now {
-                if let existing = contact.lastContactDate {
-                    if latestDate > existing {
-                        contact.lastContactDate = latestDate
-                    }
-                } else {
-                    contact.lastContactDate = latestDate
-                }
-            }
-        }
-        
-        // 8. Speichern – Task.yield() sicherstellt, dass SwiftUI vor dem save()
-        //    einen Render-Pass ausführen kann (verhindert eingefrorene Navigation).
-        await Task.yield()
-        do {
-            try modelContext.save()
-        } catch {
-            syncErrors.append(SyncError(source: .contacts, message: "Fehler beim Speichern: \(error.localizedDescription)"))
-            AppLogger.syncFailed(source: .contacts, error: error)
-        }
-        
-        // 9. Täglich alte Events bereinigen, damit die DB nicht unbegrenzt wächst
-        await performOldEventsPruningIfNeeded()
-        
         lastSyncDate = Date()
         isSyncing = false
-    }
-    
-    // MARK: - Data Cleanup Migrations
-
-    /// Löscht einmalig alle vorhandenen E-Mail- und Kalender-Events.
-    /// Diese Kanäle werden nicht mehr synchronisiert (nur direkter Kontakt: Chat, Telefon, Video).
-    private func performEmailCalendarCleanupIfNeeded(trackedContacts: [TrackedContact]) async {
-        let flagKey = "emailCalendarCleanupV1Done"
-        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
-        guard let modelContext else { return }
-
-        do {
-            let eventsToDelete = try modelContext.fetch(
-                FetchDescriptor<CommunicationEvent>(
-                    predicate: #Predicate { $0.channelRawValue == "email" || $0.channelRawValue == "calendar" }
-                )
-            )
-            guard !eventsToDelete.isEmpty else {
-                UserDefaults.standard.set(true, forKey: flagKey)
-                return
-            }
-
-            let affectedContacts = Set(eventsToDelete.compactMap(\.contact))
-
-            for event in eventsToDelete {
-                modelContext.delete(event)
-            }
-
-            // lastContactDate aus verbleibenden direkten Kontakt-Events neu berechnen
-            let directChannels: Set<String> = ["phone", "facetime", "imessage", "whatsapp", "reallife", "manual"]
-            for contact in affectedContacts {
-                let remaining = contact.communicationEvents.filter { directChannels.contains($0.channelRawValue) }
-                contact.lastContactDate = remaining.map(\.date).filter { $0 <= Date() }.max()
-            }
-
-            UserDefaults.standard.set(true, forKey: flagKey)
-            AppLogger.contactOperation(
-                "E-Mail/Kalender-Bereinigung: \(eventsToDelete.count) Events entfernt, \(affectedContacts.count) Kontakte aktualisiert",
-                count: eventsToDelete.count
-            )
-            try? modelContext.save()
-        } catch {
-            AppLogger.syncFailed(source: .email, error: error)
-        }
-    }
-
-    // MARK: - WhatsApp Status Cleanup
-
-    /// V3-Migration: Löscht alle vorhandenen WhatsApp-Events aus der DB und
-    /// lässt sie beim nächsten Sync sauber reimportieren (ohne Status-Stories).
-    /// Supersedes V1/V2 – in der Praxis treten Status-Einträge auch als
-    /// kontaktbezogene JIDs mit Suffix @status auf (z.B. 4917...@status).
-    private func performWhatsAppStatusCleanupIfNeeded(trackedContacts: [TrackedContact]) async {
-        let flagKey = "whatsappStatusCleanupV3Done"
-        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
-        guard let modelContext else { return }
-
-        do {
-            let allWAEvents = try modelContext.fetch(
-                FetchDescriptor<CommunicationEvent>(
-                    predicate: #Predicate { $0.channelRawValue == "whatsapp" }
-                )
-            )
-            // V1-Flag ebenfalls setzen, damit V1 nicht nochmals läuft
-            UserDefaults.standard.set(true, forKey: "whatsappStatusCleanupV1Done")
-            UserDefaults.standard.set(true, forKey: "whatsappStatusCleanupV2Done")
-
-            guard !allWAEvents.isEmpty else {
-                UserDefaults.standard.set(true, forKey: flagKey)
-                return
-            }
-
-            // Betroffene Kontakte sammeln
-            let affectedContacts = Set(allWAEvents.compactMap(\.contact))
-
-            // Alle WA-Events löschen (inkl. bislang durchgerutschter Status-Events)
-            for event in allWAEvents {
-                modelContext.delete(event)
-            }
-
-            // lastContactDate aus verbleibenden direkten Kontakt-Events neu berechnen
-            let directChannels: Set<String> = ["phone", "facetime", "imessage", "reallife", "manual"]
-            for contact in affectedContacts {
-                let remaining = contact.communicationEvents.filter { directChannels.contains($0.channelRawValue) }
-                contact.lastContactDate = remaining.map(\.date).filter { $0 <= Date() }.max()
-            }
-
-            UserDefaults.standard.set(true, forKey: flagKey)
-            AppLogger.contactOperation(
-                "WhatsApp V3-Bereinigung: \(allWAEvents.count) Events entfernt (inkl. @status), \(affectedContacts.count) Kontakte aktualisiert",
-                count: allWAEvents.count
-            )
-            // Sofort committen – damit das nachfolgende existingIds-Fetch
-            // die gelöschten WA-Events nicht mehr sieht.
-            try? modelContext.save()
-        } catch {
-            AppLogger.syncFailed(source: .whatsapp, error: error)
-        }
-    }
-
-    /// Löscht einmal täglich Events, die älter als 180 Tage sind.
-    /// Hält die SwiftData-Datenbank schlank, ohne die Sync-Deduplizierung
-    /// (90-Tage-Fenster) zu beeinträchtigen. Manuelle Einträge (isAutoDetected == false)
-    /// werden grundsätzlich nicht gelöscht.
-    private func performOldEventsPruningIfNeeded() async {
-        let flagKey = "lastOldEventsPruningDate"
-        let lastPruning = UserDefaults.standard.object(forKey: flagKey) as? Date ?? .distantPast
-        guard Date().timeIntervalSince(lastPruning) > 86400 else { return }
-        guard let modelContext else { return }
-
-        do {
-            let cutoffDate = Date().addingTimeInterval(-180 * 86400)
-            let descriptor = FetchDescriptor<CommunicationEvent>(
-                predicate: #Predicate { $0.date < cutoffDate && $0.isAutoDetected == true }
-            )
-            let oldEvents = try modelContext.fetch(descriptor)
-            guard !oldEvents.isEmpty else {
-                UserDefaults.standard.set(Date(), forKey: flagKey)
-                return
-            }
-
-            for event in oldEvents {
-                modelContext.delete(event)
-            }
-            try? modelContext.save()
-            UserDefaults.standard.set(Date(), forKey: flagKey)
-            AppLogger.contactOperation(
-                "Alte Events bereinigt: \(oldEvents.count) Events älter als 180 Tage entfernt",
-                count: oldEvents.count
-            )
-        } catch {
-            AppLogger.syncFailed(source: .contacts, error: error)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func updateLatestDate(_ dates: inout [UUID: Date], contactId: UUID, date: Date) {
-        // Zukunftsdaten ignorieren – können durch fehlerhafte Timestamps entstehen
-        guard date <= Date() else { return }
-        if let existing = dates[contactId] {
-            if date > existing { dates[contactId] = date }
-        } else {
-            dates[contactId] = date
-        }
-    }
-    
-    private func handleSyncError(_ source: DataSource, _ error: Error) {
-        syncErrors.append(SyncError(source: source, message: error.localizedDescription))
-        if let serviceError = error as? ServiceError {
-            switch serviceError {
-            case .notAuthorized:
-                dataSourceStatuses[source] = .needsAccess
-            case .notAvailable(let msg):
-                dataSourceStatuses[source] = .unavailable(reason: msg)
-            default:
-                dataSourceStatuses[source] = .unavailable(reason: "Fehler")
-            }
-        }
-        AppLogger.syncFailed(source: source, error: error)
-    }
-    
-    /// Timeout-geschützte Operation (gibt Ergebnis statt nur Count zurück)
-    private func withTimeout<T: Sendable>(seconds: Int, operation: @Sendable @escaping () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(for: .seconds(seconds))
-                throw ServiceError.notAvailable("Timeout nach \(seconds) Sekunden")
-            }
-            guard let first = try await group.next() else {
-                throw ServiceError.notAvailable("Interner Fehler bei Timeout-Verarbeitung")
-            }
-            group.cancelAll()
-            return first
-        }
     }
 }
 
 // MARK: - Sync Error
-struct SyncError: Identifiable {
+struct SyncError: Identifiable, Sendable {
     let id = UUID()
     let source: DataSource
     let message: String

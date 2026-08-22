@@ -48,6 +48,7 @@ actor CallHistoryService {
             FROM ZCALLRECORD
             WHERE ZDATE > ?
             ORDER BY ZDATE DESC
+            LIMIT 5000
         """
         
         var statement: OpaquePointer?

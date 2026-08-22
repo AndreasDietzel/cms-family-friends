@@ -476,7 +476,11 @@ struct ContactDetailView: View {
                     .foregroundStyle(.secondary)
                     .padding()
             } else {
-                ForEach(contact.communicationEvents.sorted { $0.date > $1.date }.prefix(15), id: \.id) { event in
+                // Ergebnis in let extrahieren statt inline-Kette im ForEach
+                let sorted = contact.communicationEvents
+                    .sorted { $0.date > $1.date }
+                    .prefix(15)
+                ForEach(sorted, id: \.id) { event in
                     HStack {
                         Text(event.date.relativeString)
                             .font(.caption)
