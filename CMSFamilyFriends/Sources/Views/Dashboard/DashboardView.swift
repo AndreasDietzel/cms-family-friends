@@ -150,6 +150,9 @@ struct DashboardView: View {
         }
         .task { cachedClusters = buildClusters() }
         .onChange(of: recentEvents) { _, _ in cachedClusters = buildClusters() }
+        .sheet(item: $selectedContact) { contact in
+            ContactDetailView(contact: contact)
+        }
     }
     
     // MARK: - Sync Error Banner
@@ -237,6 +240,8 @@ struct DashboardView: View {
                 ], spacing: 12) {
                     ForEach(overdue, id: \.id) { contact in
                         ContactCardView(contact: contact)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectedContact = contact }
                     }
                 }
             }
