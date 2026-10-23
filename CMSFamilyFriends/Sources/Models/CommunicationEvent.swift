@@ -116,3 +116,28 @@ enum CommunicationDirection: String, CaseIterable, Codable {
         }
     }
 }
+
+extension Sequence where Element == CommunicationEvent {
+    /// Anzahl echter Interaktionen: Nachrichten (iMessage, WhatsApp, E-Mail) innerhalb
+    /// von 60 Minuten zählen als ein Gespräch, sonst würde jede Einzelnachricht mitgezählt.
+    /// Anrufe, Treffen und manuelle Einträge zählen einzeln.
+    var interactionCount: Int {
+        let messagingChannels: Set<CommunicationChannel> = [.imessage, .whatsapp, .email]
+        let gap: TimeInterval = 60 * 60
+        var count = 0
+        var lastMessageDate: Date?
+        for event in sorted(by: { $0.date < $1.date }) {
+            guard messagingChannels.contains(event.channel) else {
+                count += 1
+                continue
+            }
+            if let last = lastMessageDate, event.date.timeIntervalSince(last) <= gap {
+                lastMessageDate = event.date
+                continue
+            }
+            count += 1
+            lastMessageDate = event.date
+        }
+        return count
+    }
+}

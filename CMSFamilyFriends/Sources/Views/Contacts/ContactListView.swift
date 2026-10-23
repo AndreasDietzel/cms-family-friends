@@ -353,7 +353,7 @@ struct ContactDetailView: View {
                 statItem("Letzter Kontakt",
                          value: contact.lastContactDate?.relativeString ?? "Nie")
                 statItem("Kommunikationen",
-                         value: "\(contact.communicationEvents.count)")
+                         value: "\(contact.communicationEvents.interactionCount)")
             }
         }
     }
@@ -476,20 +476,36 @@ struct ContactDetailView: View {
                     .foregroundStyle(.secondary)
                     .padding()
             } else {
-                // Ergebnis in let extrahieren statt inline-Kette im ForEach
-                let sorted = contact.communicationEvents
-                    .sorted { $0.date > $1.date }
-                    .prefix(15)
-                ForEach(sorted, id: \.id) { event in
-                    HStack {
-                        Text(event.date.relativeString)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 120, alignment: .leading)
-                        Label(event.channel.displayName, systemImage: event.channel.icon)
-                            .font(.caption)
-                        Spacer()
-                        Text(event.direction == .incoming ? "↙" : "↗")
+                let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+                let byChannel = Dictionary(grouping: contact.communicationEvents, by: \.channel)
+                let groups = byChannel
+                    .map { channel, events in
+                        (channel: channel,
+                         events: events.sorted { $0.date > $1.date },
+                         lastYear: events.filter { $0.date >= yearAgo }.interactionCount)
+                    }
+                    .sorted { ($0.lastYear, $0.events[0].date) > ($1.lastYear, $1.events[0].date) }
+                ForEach(groups, id: \.channel) { group in
+                    DisclosureGroup {
+                        ForEach(group.events.prefix(5), id: \.id) { event in
+                            HStack {
+                                Text(event.date.relativeString)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 120, alignment: .leading)
+                                Spacer()
+                                Text(event.direction == .incoming ? "↙" : "↗")
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Label(group.channel.displayName, systemImage: group.channel.icon)
+                                .font(.subheadline)
+                            Spacer()
+                            Text("\(group.lastYear)× im letzten Jahr")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

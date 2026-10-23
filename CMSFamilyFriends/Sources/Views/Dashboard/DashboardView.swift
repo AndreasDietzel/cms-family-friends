@@ -63,29 +63,6 @@ struct DashboardView: View {
     /// Kontakt, dessen Personendokument gerade über eine Dashboard-Kachel geöffnet wurde.
     @State private var selectedContact: TrackedContact?
 
-    /// Anzahl echter Interaktionen: Nachrichten (iMessage, WhatsApp, E-Mail) innerhalb
-    /// von 60 Minuten zählen als ein Gespräch, sonst würde jede Einzelnachricht mitgezählt.
-    /// Anrufe, Treffen und manuelle Einträge zählen einzeln.
-    private static func interactionCount(_ events: [CommunicationEvent]) -> Int {
-        let messagingChannels: Set<CommunicationChannel> = [.imessage, .whatsapp, .email]
-        let gap: TimeInterval = 60 * 60
-        var count = 0
-        var lastMessageDate: Date?
-        for event in events.sorted(by: { $0.date < $1.date }) {
-            guard messagingChannels.contains(event.channel) else {
-                count += 1
-                continue
-            }
-            if let last = lastMessageDate, event.date.timeIntervalSince(last) <= gap {
-                lastMessageDate = event.date
-                continue
-            }
-            count += 1
-            lastMessageDate = event.date
-        }
-        return max(count, 1)
-    }
-
     private func buildClusters() -> [RecentActivityCluster] {
         let calendar = Calendar.current
         let grouped = Dictionary(grouping: recentEvents) { event in
@@ -113,7 +90,7 @@ struct DashboardView: View {
                         channel: latestEvent.channel
                     ),
                     latestEvent: latestEvent,
-                    count: Self.interactionCount(events),
+                    count: max(events.interactionCount, 1),
                     direction: direction
                 )
             }
