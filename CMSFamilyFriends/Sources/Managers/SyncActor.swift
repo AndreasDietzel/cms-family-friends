@@ -41,6 +41,26 @@ actor SyncActor {
         var result = SyncResult()
 
         // Tracked contacts laden
+    /// Entfernt Events mit identischem sourceIdentifier (Altlast eines Sync-Fenster-Bugs).
+    private func removeDuplicateEvents() {
+        guard let events = try? modelContext.fetch(FetchDescriptor<CommunicationEvent>(
+            predicate: #Predicate { $0.sourceIdentifier != nil }
+        )) else { return }
+        var seen = Set<String>()
+        var removed = 0
+        for event in events {
+            guard let id = event.sourceIdentifier else { continue }
+            if !seen.insert(id).inserted {
+                modelContext.delete(event)
+                removed += 1
+            }
+        }
+        if removed > 0 {
+            try? modelContext.save()
+            AppLogger.syncCompleted(source: .imessage, itemCount: -removed)
+        }
+    }
+
         let trackedContacts: [TrackedContact]
         do {
             trackedContacts = try modelContext.fetch(FetchDescriptor<TrackedContact>())
@@ -57,6 +77,8 @@ actor SyncActor {
         let lookups = await buildLookups(trackedContacts: trackedContacts, result: &result)
 
         // Existierende sourceIdentifiers im Sync-Fenster laden
+        removeDuplicateEvents()
+
         var existingIds: Set<String>
         do {
             let descriptor = FetchDescriptor<CommunicationEvent>(

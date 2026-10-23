@@ -119,7 +119,9 @@ class ContactManager: ObservableObject {
         if let lastSync = lastSyncDate {
             let daysSince = max(1, Int(Date().timeIntervalSince(lastSync) / 86400) + 1)
             syncDaysPast = min(daysSince, 90)
-            idCutoffDate = lastSync.addingTimeInterval(-300)
+            // Muss das gesamte Abruf-Fenster abdecken, sonst werden bereits
+            // gespeicherte Nachrichten aus dem Fenster bei jedem Sync erneut eingefügt.
+            idCutoffDate = Date().addingTimeInterval(-Double(syncDaysPast) * 86400 - 3600)
         } else {
             syncDaysPast = 90
             idCutoffDate = Date().addingTimeInterval(-90 * 86400)
